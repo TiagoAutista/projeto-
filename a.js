@@ -1,173 +1,159 @@
-// ============================================================================
-// IMPORTS CORRETOS
-// ============================================================================
-const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-const { parse } = require('csv-parse/sync');
-const createCsvWriter = require('csv-writer').createObjectCsvWriter;
-const path = require('path');
-const fs = require('fs');
+// [MAIN] Orquestrador do Robô Unificado
+const config = require("./config/config");
+const {
+  obterNavegador,
+  obterPagina,
+  configurarPagina,
+  desconectarDoChrome,
+} = require("./lib/browser");
+const { garantirSessao } = require("./lib/session");
+const { processarWFM, abrirParaInspecaoWFM } = require("./lib/wfm");
+// ✅ Substitua a linha 11 por esta rota exata:
+const { processarGPS } = require('./lib/gps-next/gps');
 
-// Ativa o modo "stealth" para evitar bloqueios do F5/WAF
-puppeteer.use(StealthPlugin());
+
+
+// Módulo Siebel
+const { processarSiebel, abrirParaInspecaoSiebel } = require("./lib/GPS-siebel");
+const { mostrarMenu, criarInterface } = require("./ui/menu");
 
 (async () => {
-  console.log("🚀 Iniciando o robô...");
+  console.clear();
+  console.log("🚀 Robô Unificado iniciado...\n");
 
-  const browser = await puppeteer.launch({
-    headless: false,
-    defaultViewport: null,
-    args: ["--start-maximized"],
+  let browser;
+  const rl = criarInterface();
+  let ativo = true;
+
+  // Helper seguro para pausar o terminal e aguardar o operador
+  const aguardarVoltar = () => new Promise((res) => {
+    rl.question("\n↩️ Pressione [ENTER] para voltar ao menu principal...", () => res());
   });
 
-  const page = await browser.newPage();
-
   try {
-    // 1. Acessar URL
-    const url = "http://URL_DO_SEU_SISTEMA_AQUI/DiagnoseServiceProblem";
-    console.log(`🌐 Acessando: ${url}`);
-    await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
-
-    // 2. Aguardar interface carregar
-    console.log("⏳ Aguardando a interface carregar...");
-    await page.waitForSelector(".ui-home-state", {
-      visible: true,
-      timeout: 15000,
-    });
-
-    // 3. Abrir dropdown de seleção (usando seletor mais confiável)
-    console.log("🖱️ Abrindo o menu de seleção...");
-    const seletorDropdown = '.ui-home-mat-form-field-selecionar .mat-select-trigger';
-    await page.waitForSelector(seletorDropdown, { visible: true, timeout: 10000 });
-    await page.click(seletorDropdown);
-
-    // 4. Aguardar e selecionar "ID Fibra"
-    console.log('🖱️ Selecionando "ID Fibra"...');
-    await page.waitForSelector('.cdk-overlay-pane .mat-option', { 
-      visible: true, 
-      timeout: 10000 
-    });
-    
-    const selecionado = await page.evaluate(() => {
-      const opcoes = Array.from(document.querySelectorAll('.cdk-overlay-pane .mat-option'));
-      const opcaoAlvo = opcoes.find((opt) => 
-        opt.innerText.trim().includes('ID Fibra')
-      );
-      if (opcaoAlvo) {
-        opcaoAlvo.click();
-        return true;
-      }
-      return false;
-    });
-
-    if (!selecionado) {
-      throw new Error('Opção "ID Fibra" não encontrada no dropdown');
-    }
-
-    // Pausa para Angular processar
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    // 5. Digitar ID no campo de pesquisa
-    const idFibra = "SPO-123455654-069";
-    console.log(`⌨️ Digitando o ID: ${idFibra}`);
-
-    const seletorInput = '.ui-home-mat-form-field-pesquisar input[formcontrolname="search"]';
-    await page.waitForSelector(seletorInput, { visible: true, timeout: 5000 });
-    await page.click(seletorInput);
-    await page.$eval(seletorInput, (el) => (el.value = ""));
-    await page.type(seletorInput, idFibra, { delay: 150 });
-
-    // 6. Clicar no botão "Buscar"
-    console.log('🖱️ Clicando em "Buscar"...');
-    const seletorBotao = '.ui-button-home';
-    await page.waitForSelector(seletorBotao, { visible: true, timeout: 5000 });
-    await page.click(seletorBotao);
-
-    // 7. Aguardar resultado da busca
-    console.log("⏳ Aguardando o sistema processar a busca...");
-    
-    // Aguardar por qualquer indicador de resultado (tabela, card ou mensagem de erro)
-    await page.waitForFunction(
-      () => {
-        const temTabela = document.querySelector('.mat-table');
-        const temCard = document.querySelector('.ui-card');
-        const temErro = document.querySelector('.mat-error, .mat-snack-bar-container');
-        return temTabela || temCard || temErro;
-      },
-      { timeout: 15000 }
-    );
-
-    // Verificar se há erro na busca
-    const temErro = await page.$('.mat-error, .mat-snack-bar-container');
-    if (temErro) {
-      const erroTexto = await page.evaluate(() => {
-        const erro = document.querySelector('.mat-error, .mat-snack-bar-container');
-        return erro ? erro.innerText : 'Erro desconhecido';
-      });
-      throw new Error(`Busca falhou: ${erroTexto}`);
-    }
-
-    console.log("✅ Busca realizada com sucesso!");
-
-    // 8. Extrair dados da busca
-    console.log("📊 Extraindo dados...");
-    const dadosExtraidos = await page.evaluate(() => {
-      const dados = [];
-      
-      // Tentar extrair de tabela
-      const linhas = document.querySelectorAll('.mat-table tbody tr');
-      linhas.forEach(linha => {
-        const colunas = linha.querySelectorAll('td');
-        const linhaDados = {};
-        colunas.forEach((col, idx) => {
-          linhaDados[`coluna_${idx}`] = col.innerText.trim();
-        });
-        if (Object.keys(linhaDados).length > 0) {
-          dados.push(linhaDados);
-        }
-      });
-
-      // Tentar extrair de cards
-      if (dados.length === 0) {
-        const cards = document.querySelectorAll('.ui-card');
-        cards.forEach(card => {
-          dados.push({
-            conteudo: card.innerText.trim()
-          });
-        });
-      }
-
-      return dados;
-    });
-
-    console.log(`📦 Dados extraídos: ${dadosExtraidos.length} registros`);
-    console.log(dadosExtraidos);
-
-    // 9. Screenshot de sucesso
-    await page.screenshot({ 
-      path: "sucesso_busca.png", 
-      fullPage: true 
-    });
-    console.log("📸 Screenshot salvo: sucesso_busca.png");
-
-    // 10. Salvar em CSV (opcional)
-    if (dadosExtraidos.length > 0) {
-      const csvWriter = createCsvWriter({
-        path: 'resultado_busca.csv',
-        header: Object.keys(dadosExtraidos[0]).map(key => ({ id: key, title: key }))
-      });
-      await csvWriter.writeRecords(dadosExtraidos);
-      console.log("📄 CSV salvo: resultado_busca.csv");
-    }
-
-  } catch (error) {
-    console.error("❌ Erro durante a execução:", error.message);
-    await page.screenshot({ path: "erro_tela.png", fullPage: true });
-    console.log("📸 Screenshot de erro salvo: erro_tela.png");
-  } finally {
-    // Fechar navegador
-    console.log("🔒 Fechando navegador...");
-    await browser.close();
-    console.log("✅ Robô finalizado.");
+    // Conecta ao Chrome aberto via CDP apenas uma vez
+    browser = await obterNavegador(config);
+  } catch (err) {
+    console.error("❌ Erro fatal ao conectar ao Google Chrome (CDP):", err.message);
+    console.error("💡 Verifique se o Chrome foi iniciado com as flags de depuração remota.");
+    rl.close();
+    process.exit(1);
   }
+
+  // Loop principal com try/catch interno para garantir resiliência
+  while (ativo) {
+    try {
+      console.clear(); // Mantém o terminal do operador sempre limpo e organizado
+      const op = await mostrarMenu(rl);
+      let page;
+
+      switch (op) {
+        case "1":
+          console.clear();
+          console.log('▶️ [WFM] Iniciando extração de CPFs em lote...');
+          page = await obterPagina(browser, "appwfm.gvt.net.br");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "wfm", rl, config);
+          await processarWFM(page, config, rl);
+          await aguardarVoltar();
+          break;
+
+        case "2":
+          console.clear();
+          console.log('▶️ [GPS] Iniciando Tipificação por UNIDADE...');
+          page = await obterPagina(browser, "gps");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "gps", rl, config);
+          await processarGPS(page, "unidade", config, rl);
+          await aguardarVoltar();
+          break;
+
+        case "3":
+          console.clear();
+          console.log('▶️ [GPS] Iniciando Tipificação por GRUPO...');
+          page = await obterPagina(browser, "gps");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "gps", rl, config);
+          await processarGPS(page, "grupo", config, rl);
+          await aguardarVoltar();
+          break;
+
+        case "4":
+          console.clear();
+          console.log("🔍 [WFM] Abrindo para inspeção/ajustes manuais...");
+          page = await obterPagina(browser, "appwfm.gvt.net.br");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "wfm", rl, config);
+          await abrirParaInspecaoWFM(page, config);
+          await aguardarVoltar();
+          break;
+
+        case "5":
+          console.clear();
+          console.log("🔍 [GPS] Abrindo para inspeção/ajustes manuais...");
+          page = await obterPagina(browser, "gps");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "gps", rl, config);
+          await abrirParaInspecaoGPS(page, config);
+          await aguardarVoltar();
+          break;
+
+        case "6":
+          console.clear();
+          console.log("🗄️ [Siebel] Iniciando Tipificação por UNIDADE...");
+          page = await obterPagina(browser, "siebel");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "siebel", rl, config);
+          await processarSiebel(page, "unidade", config, rl);
+          await aguardarVoltar();
+          break;
+
+        case "7":
+          console.clear();
+          console.log("🗄️ [Siebel] Iniciando Tipificação por GRUPO...");
+          page = await obterPagina(browser, "siebel");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "siebel", rl, config);
+          await processarSiebel(page, "grupo", config, rl);
+          await aguardarVoltar();
+          break;
+
+        case "8":
+          console.clear();
+          console.log("🔍 [Siebel] Abrindo para inspeção/ajustes manuais...");
+          page = await obterPagina(browser, "siebel");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "siebel", rl, config);
+          await abrirParaInspecaoSiebel(page, config);
+          await aguardarVoltar();
+          break;
+
+        case "9":
+          console.log("\n👋 Encerrando aplicação...");
+          ativo = false;
+          break;
+
+        default:
+          console.log("⚠️ Opção inválida! Escolha um número de 1 a 9.");
+          await new Promise(r => setTimeout(r, 1500));
+      }
+    } catch (err) {
+      console.error("\n❌ Erro na execução da opção escolhida:", err.message);
+      console.log("💡 O estado do robô foi preservado para evitar quedas.");
+      await aguardarVoltar();
+    }
+  }
+
+  // Desconexão limpa e segura de recursos
+  rl.close();
+  if (browser) {
+    await desconectarDoChrome(browser);
+  }
+  console.log("✅ Programa finalizado com sucesso!");
+  process.exit(0);
 })();
+
+// Captura falhas críticas fora do escopo principal para evitar travamentos de terminal
+process.on('unhandledRejection', (erro) => {
+  console.error('\n❌ Um erro assíncrono inesperado ocorreu no ecossistema:', erro.message);
+});
