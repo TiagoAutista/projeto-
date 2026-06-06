@@ -1,54 +1,114 @@
-// src/lib/gps-next/subroutine/process/lerRegistrosCSV.js
-const { parse } = require("csv-parse/sync");
-const path = require("path");
-const fs = require("fs");
+// src/lib/gps-next/subroutine/process/aplicarTipificacao.js
+const { delay, aguardarPrimeFaces, clicarItemPorTexto } = require("../../../../utils/helpers");
 
 /**
- * Lê e valida o arquivo CSV de entrada
- * @returns {Object} - { registros, arquivoSaida } ou { registros: null } em caso de erro
+ * Aplica a tipificação de forma segura, evitando cliques duplicados
+ * em árvores do PrimeFaces que possuem auto-seleção
  */
-async function lerRegistrosCSV(config, tipoTratado) {
-  const escopoSistema = "gps";
-  const cfg = config[escopoSistema]?.tipificacoes?.[tipoTratado];
-
-  if (!cfg) {
-    console.error(`\n❌ ERRO DE CONFIGURAÇÃO: O mapa de tipificação para "${tipoTratado}" não foi localizado.`);
-    return { registros: null };
+async function aplicarTipificacao(page, cfg) {
+  if (!cfg.itens || cfg.itens.length === 0) {
+    console.log("      ℹ️  Nenhum item de tipificação configurado.");
+    return;
   }
 
-  const raizProjeto = config.paths?.root || process.cwd();
-  const arquivoEntrada = path.join(raizProjeto, cfg.arquivo);
-  const arquivoSaida = path.join(raizProjeto, cfg.saida);
-
-  if (!fs.existsSync(arquivoEntrada)) {
-    console.error(`❌ Arquivo de entrada não encontrado: ${arquivoEntrada}`);
-    return { registros: null };
+  // 🛡️ BLINDAGEM 1: Remove duplicatas da lista mantendo a ordem original
+  const itensUnicos = [...new Set(cfg.itens.map(i => String(i).trim()))];
+  
+  if (itensUnicos.length < cfg.itens.length) {
+    console.warn(`      ⚠️  Detectados ${cfg.itens.length - itensUnicos.length} itens duplicados no config. Removendo...`);
   }
 
-  const outputDir = path.dirname(arquivoSaida);
-  if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
+  // 🛡️ BLINDAGEM 2: Define escopo restrito à árvore de tipificação
+  // Isso evita que o robô clique em textos iguais que aparecem em menus, breadcrumbs, etc.
+  const seletoresArvore = cfg.seletorLista 
+    ? [cfg.seletorLista] 
+    : [
+        ".ui-tree",                          // Árvore padrão PrimeFaces
+        "[id*='tipificacao'] .ui-tree",      // Árvore dentro do painel de tipificação
+        ".ui-selectonetree",                 // Componente de árvore de seleção única
+        "[id*='tree']",                      // Fallback genérico
+      ];
+
+  console.log(`\n      🌳 Aplicando ${itensUnicos.length} níveis de tipificação...`);
+
+  for (let index = 0; index < itensUnicos.length; index++) {
+    const item = itensUnicos[index];
+    const nivel = index + 1;
+    
+    console.log(`      📍 Nível ${nivel}/${itensUnicos.length}: "${item}"`);
+
+    // 🛡️ BLINDAGEM 3: Verifica se o item JÁ está selecionado antes de clicar
+    // Isso evita o problema da auto-seleção do PrimeFaces
+    const jaSelecionado = await verificarSeJaSelecionado(page, item, seletoresArvore);
+    
+    if (jaSelecionado) {
+      console.log(`      ✅ "${item}" já está selecionado (auto-seleção detectada). Pulando clique.`);
+      await delay(300);
+      continue;
+    }
+
+    // 🛡️ BLINDAGEM 4: Tenta clicar APENAS dentro do escopo da árvore
+    const clicou = await clicarItemPorTexto(page, item, seletoresArvore);
+    
+    if (!clicou) {
+      console.warn(`      ⚠️  Elemento não localizado na árvore: "${item}"`);
+      
+      // Fallback: tenta sem restrição de escopo (último recurso)
+      console.log(`      🔄 Tentando busca ampla (sem restrição de escopo)...`);
+      const clicouFora = await clicarItemPorTexto(page, item, []);
+      if (!clicouFora) {
+        console.error(`      ❌ Falha definitiva ao localizar: "${item}"`);
+      }
+    }
+
+    // 🛡️ BLINDAGEM 5: Aguarda o AJAX do PrimeFaces processar ANTES do próximo clique
+    // Aumentei o delay para evitar race conditions
+    await aguardarPrimeFaces(page, 4000);
+    await delay(800); // Delay extra para estabilização do DOM
   }
 
-  let registros;
-  try {
-    registros = parse(fs.readFileSync(arquivoEntrada, "utf8"), {
-      columns: true,
-      skip_empty_lines: true,
-      trim: true,
-    });
-  } catch (err) {
-    console.error(`❌ Erro ao ler CSV: ${err.message}`);
-    return { registros: null };
-  }
-
-  if (!registros.length) {
-    console.log("⚠️ CSV vazio. Nada a processar.");
-    return { registros: null };
-  }
-
-  console.log(`\n📋 ${tipoTratado.toUpperCase()}: ${registros.length} documentos localizados.`);
-  return { registros, arquivoSaida, cfg };
+  console.log(`      🎉 Tipificação concluída.`);
 }
 
-module.exports = { lerRegistrosCSV };
+/**
+ * Verifica se um item já está selecionado na árvore
+ * (Previne cliques duplicados por auto-seleção do PrimeFaces)
+ */
+async function verificarSeJaSelecionado(page, textoItem, seletoresArvore) {
+  try {
+    const resultado = await page.evaluate((texto, seletores) => {
+      const textoLower = texto.toLowerCase().trim();
+      
+      // Busca em todos os seletores de árvore
+      for (const seletor of seletores) {
+        const arvores = document.querySelectorAll(seletor);
+        
+        for (const arvore of arvores) {
+          // Procura por itens marcados como selecionados
+          const itensSelecionados = arvore.querySelectorAll(
+            '.ui-treenode-selected, ' +
+            '.ui-state-highlight, ' +
+            '[aria-selected="true"], ' +
+            '.ui-tree-selectable.ui-state-hover'
+          );
+          
+          for (const item of itensSelecionados) {
+            const label = item.querySelector('.ui-treenode-label, .ui-tree-label, span');
+            if (label && label.innerText?.toLowerCase().trim() === textoLower) {
+              return true;
+            }
+          }
+        }
+      }
+      
+      return false;
+    }, textoItem, seletoresArvore);
+    
+    return resultado;
+  } catch (err) {
+    // Se der erro na verificação, assume que não está selecionado (comporta-se como antes)
+    return false;
+  }
+}
+
+module.exports = { aplicarTipificacao };
