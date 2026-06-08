@@ -3,9 +3,9 @@
 const CONFIG = {
   url: "https://sdu.redecorp.br/DiagnoseServiceProblem/home",
   executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-  idFibra: "SPO-76438046-069", // 🔄 Altere aqui o ID que deseja buscar
+  idFibra: "SPO-76438046-069", 
   
-  // 📂 Perfil do Chrome (Descomente a linha abaixo para manter a sessão logada e pular o login manual)
+  // 📂 Perfil do Chrome (Descomente para manter sessão logada)
   // userDataDir: 'C:\\Users\\A0161921\\AppData\\Local\\Google\\Chrome\\User Data',
   userDataDir: null,
   
@@ -50,9 +50,11 @@ const CONFIG = {
       '#login-form'
     ],
     homeState: ".ui-home-state",
-    dropdownTrigger: '.ui-home-mat-form-field-selecionar .mat-select-trigger',
     
-    // ✅ ATUALIZADO: Seletor robusto e infalível baseado no HTML fornecido
+    // ✅ ATUALIZADO: Mira diretamente no componente Angular Material, ignorando wrappers instáveis
+    dropdownTrigger: 'mat-select',
+    
+    // ✅ Seletor do input de busca já validado anteriormente
     searchInput: 'input.mat-input-element[formcontrolname="search"]',
     
     searchButton: '.ui-button-home',
