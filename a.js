@@ -1,11 +1,169 @@
-[1/5] 🔍 Processando: SPO-69089069-069
-──────────────────────────────────────────────────
-   ⏳ Aguardando resultado da busca...
-   📑 Clicando na aba "Banda Larga"...
-   ✅ Aba "Banda Larga" ativada!
-   📂 Localizando e expandindo painel "Informações de Bloqueios"...
-   ⏳ Painel fechado. Clicando para expandir...
-
-   ❌ Erro: Waiting failed: 15000ms exceeded
-
-Na parte do painel "Informações de Bloqueios" nao e acionado.
+// ============================================================================
+// 📂 EXPANDIR PAINEL (Versão robusta com múltiplas estratégias)
+// ============================================================================
+async function expandirPainelBloqueios(page) {
+  console.log('   📂 Localizando painel "Informações de Bloqueios"...');
+  
+  // 1. DIAGNÓSTICO: Listar todos os painéis
+  const diagnostico = await page.evaluate(() => {
+    const headers = Array.from(document.querySelectorAll('mat-expansion-panel-header'));
+    return headers.map((h, i) => {
+      const painel = h.closest('mat-expansion-panel');
+      const titulo = h.querySelector('mat-panel-title');
+      return {
+        indice: i,
+        texto: titulo ? titulo.innerText.trim() : 'Sem título',
+        estaExpandido: painel ? painel.classList.contains('mat-expanded') : false,
+        ariaExpanded: h.getAttribute('aria-expanded')
+      };
+    });
+  });
+  
+  console.log(`   🔍 Encontrados ${diagnostico.length} painéis:`);
+  diagnostico.forEach(d => {
+    console.log(`      [${d.indice}] "${d.texto}" | expandido: ${d.estaExpandido} | aria: ${d.ariaExpanded}`);
+  });
+  
+  // 2. Encontrar o painel alvo pelo texto do título
+  const headerSelector = await page.evaluateHandle(() => {
+    const headers = Array.from(document.querySelectorAll('mat-expansion-panel-header'));
+    for (const header of headers) {
+      const titulo = header.querySelector('mat-panel-title');
+      if (titulo) {
+        const texto = titulo.innerText.toLowerCase();
+        if (texto.includes('informações de bloqueios') || texto.includes('informacoes de bloqueios')) {
+          return header;
+        }
+      }
+    }
+    return null;
+  });
+  
+  const headerExiste = await headerSelector.evaluate(h => h !== null);
+  if (!headerExiste) {
+    throw new Error('Painel "Informações de Bloqueios" não encontrado');
+  }
+  
+  console.log('   🎯 Painel alvo localizado!');
+  
+  // 3. Verificar se já está expandido
+  const jaExpandido = await page.evaluate((header) => {
+    const painel = header.closest('mat-expansion-panel');
+    const ariaExpanded = header.getAttribute('aria-expanded');
+    return painel?.classList.contains('mat-expanded') || ariaExpanded === 'true';
+  }, headerSelector);
+  
+  if (jaExpandido) {
+    console.log('   ✅ Painel já está expandido!');
+  } else {
+    console.log('   ⏳ Painel fechado. Tentando expandir...');
+    
+    // ESTRATÉGIA 1: ScrollIntoView + Click no título
+    try {
+      await page.evaluate((header) => {
+        header.scrollIntoView({ block: 'center', behavior: 'instant' });
+      }, headerSelector);
+      await aguardar(500);
+      
+      // Clica no mat-panel-title (elemento mais interno)
+      const tituloSelector = await headerSelector.evaluateHandle(h => h.querySelector('mat-panel-title'));
+      await tituloSelector.click();
+      console.log('   ✓ Estratégia 1: Click no título executado');
+      await aguardar(1500);
+    } catch (e) {
+      console.log('   ⚠️ Estratégia 1 falhou:', e.message);
+    }
+    
+    // Verificar se funcionou
+    let expandiu = await page.evaluate((header) => {
+      const painel = header.closest('mat-expansion-panel');
+      return painel?.classList.contains('mat-expanded') || header.getAttribute('aria-expanded') === 'true';
+    }, headerSelector);
+    
+    // ESTRATÉGIA 2: Click direto no header
+    if (!expandiu) {
+      console.log('   ⏳ Tentando estratégia 2: Click no header...');
+      try {
+        await headerSelector.click({ delay: 150 });
+        await aguardar(1500);
+      } catch (e) {
+        console.log('   ⚠️ Estratégia 2 falhou:', e.message);
+      }
+      
+      expandiu = await page.evaluate((header) => {
+        const painel = header.closest('mat-expansion-panel');
+        return painel?.classList.contains('mat-expanded') || header.getAttribute('aria-expanded') === 'true';
+      }, headerSelector);
+    }
+    
+    // ESTRATÉGIA 3: Click via JavaScript
+    if (!expandiu) {
+      console.log('   ⏳ Tentando estratégia 3: Click via JavaScript...');
+      await page.evaluate((header) => {
+        header.click();
+      }, headerSelector);
+      await aguardar(1500);
+      
+      expandiu = await page.evaluate((header) => {
+        const painel = header.closest('mat-expansion-panel');
+        return painel?.classList.contains('mat-expanded') || header.getAttribute('aria-expanded') === 'true';
+      }, headerSelector);
+    }
+    
+    // ESTRATÉGIA 4: Dispatch de evento
+    if (!expandiu) {
+      console.log('   ⏳ Tentando estratégia 4: Dispatch de evento...');
+      await page.evaluate((header) => {
+        const event = new MouseEvent('click', {
+          bubbles: true,
+          cancelable: true,
+          view: window
+        });
+        header.dispatchEvent(event);
+      }, headerSelector);
+      await aguardar(1500);
+      
+      expandiu = await page.evaluate((header) => {
+        const painel = header.closest('mat-expansion-panel');
+        return painel?.classList.contains('mat-expanded') || header.getAttribute('aria-expanded') === 'true';
+      }, headerSelector);
+    }
+    
+    if (expandiu) {
+      console.log('   ✅ Painel expandido com sucesso!');
+    } else {
+      console.log('   ⚠️ Painel não expandiu, mas continuando...');
+    }
+  }
+  
+  // 4. Aguardar conteúdo (tags <p>) ser renderizado
+  console.log('   ⏳ Aguardando conteúdo renderizar...');
+  let tentativas = 0;
+  const maxTentativas = 10;
+  let temConteudo = false;
+  
+  while (tentativas < maxTentativas && !temConteudo) {
+    temConteudo = await page.evaluate((header) => {
+      const painel = header.closest('mat-expansion-panel');
+      if (!painel) return false;
+      const body = painel.querySelector('.mat-expansion-panel-body');
+      if (!body) return false;
+      const ps = body.querySelectorAll('p');
+      return ps.length > 0;
+    }, headerSelector);
+    
+    if (!temConteudo) {
+      tentativas++;
+      console.log(`   ⏳ Aguardando... (${tentativas}/${maxTentativas})`);
+      await aguardar(500);
+    }
+  }
+  
+  if (temConteudo) {
+    console.log('   ✅ Conteúdo pronto para extração!');
+  } else {
+    console.log('   ⚠️ Conteúdo não renderizado, tentando extrair mesmo assim...');
+  }
+  
+  await headerSelector.dispose();
+}
