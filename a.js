@@ -11,10 +11,12 @@ const { processarWFM, abrirParaInspecaoWFM } = require("./lib/wfm");
 // ✅ Substitua a linha 11 por esta rota exata:
 const { processarGPS } = require('./lib/gps-next/gps');
 
-
-
 // Módulo Siebel
 const { processarSiebel, abrirParaInspecaoSiebel } = require("./lib/GPS-siebel");
+
+// ✅ NOVO: Módulo SDU (Diagnóstico de ID Fibra)
+const { processarSDU, abrirParaInspecaoSDU } = require("./lib/sdu/sdu");
+
 const { mostrarMenu, criarInterface } = require("./ui/menu");
 
 (async () => {
@@ -128,13 +130,36 @@ const { mostrarMenu, criarInterface } = require("./ui/menu");
           await aguardarVoltar();
           break;
 
+        // ✅ NOVO: SDU - Busca de ID Fibra
         case "9":
+          console.clear();
+          console.log('🔍 [SDU] Iniciando busca de ID Fibra...');
+          page = await obterPagina(browser, "sdu.redecorp.br");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "sdu", rl, config);
+          await processarSDU(page, config, rl);
+          await aguardarVoltar();
+          break;
+
+        // ✅ NOVO: SDU - Modo Inspeção
+        case "10":
+          console.clear();
+          console.log("🔍 [SDU] Abrindo para inspeção/ajustes manuais...");
+          page = await obterPagina(browser, "sdu.redecorp.br");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "sdu", rl, config);
+          await abrirParaInspecaoSDU(page, config);
+          await aguardarVoltar();
+          break;
+
+        // ✅ ENCERRAR (movido de 9 para 0)
+        case "0":
           console.log("\n👋 Encerrando aplicação...");
           ativo = false;
           break;
 
         default:
-          console.log("⚠️ Opção inválida! Escolha um número de 1 a 9.");
+          console.log("⚠️ Opção inválida! Escolha um número de 0 a 10.");
           await new Promise(r => setTimeout(r, 1500));
       }
     } catch (err) {
