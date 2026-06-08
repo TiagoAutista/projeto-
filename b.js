@@ -28,14 +28,13 @@ function lerCsvEntrada() {
 }
 
 // ============================================================================
-// 🔐 NOVA FUNÇÃO: Login Automatizado com Pausa para Confirmação
+// 🔐 Login automático
 // ============================================================================
 async function fazerLoginAutomatico(page, rl) {
   console.log('\n' + '═'.repeat(70));
   console.log('🔐 LOGIN DETECTADO - PREENCHIMENTO AUTOMÁTICO');
   console.log('═'.repeat(70));
 
-  // 1. Coletar dados do operador
   const matricula = await new Promise(res => rl.question('👤 Digite sua matrícula: ', res));
   const senha = await new Promise(res => rl.question('🔑 Digite sua senha: ', res));
 
@@ -45,59 +44,187 @@ async function fazerLoginAutomatico(page, rl) {
 
   console.log('\n⚙️ Preenchendo campos e enviando...');
 
-  // 2. Preencher Matrícula
   await page.waitForSelector(CONFIG.selectors.login.username, { visible: true, timeout: 15000 });
   await page.click(CONFIG.selectors.login.username);
   await page.type(CONFIG.selectors.login.username, matricula.trim(), { delay: 50 });
 
-  // 3. Preencher Senha
   await page.waitForSelector(CONFIG.selectors.login.password, { visible: true, timeout: 15000 });
   await page.click(CONFIG.selectors.login.password);
   await page.type(CONFIG.selectors.login.password, senha.trim(), { delay: 50 });
 
-  // 4. Clicar em Entrar
   await page.waitForSelector(CONFIG.selectors.login.button, { visible: true, timeout: 15000 });
   await page.click(CONFIG.selectors.login.button);
   
   console.log('✅ Credenciais enviadas! Aguardando o sistema processar...\n');
-
-  // 5. Pausa para o sistema carregar a próxima tela
   await aguardar(3000);
 
-  // 6. PAUSA CRÍTICA: Aguarda confirmação do operador
   await aguardarEnter(
     '👉 Olhe para o navegador. Se o login foi bem-sucedido e você está na HOME,\n' +
-    '   pressione [ENTER] para o robô continuar.\n' +
-    '   (Se deu erro de senha, pressione Ctrl+C para cancelar e tente de novo).'
+    '   pressione [ENTER] para o robô continuar.'
   );
 
-  // 7. Validação de segurança (o robô tenta confirmar se a home apareceu)
   try {
     await page.waitForSelector(CONFIG.selectors.homeState, { visible: true, timeout: 10000 });
-    console.log('✅ Home do sistema confirmada pelo robô! Prosseguindo...\n');
+    console.log('✅ Home do sistema confirmada!\n');
   } catch (e) {
-    console.log('⚠️ O robô não detectou a classe da home automaticamente, mas vai prosseguir conforme sua confirmação visual.\n');
+    console.log('⚠️ Robô não detectou a home automaticamente, mas prosseguindo conforme sua confirmação.\n');
   }
 }
 
 // ============================================================================
-// 🎯 Processar UM ID
+// 📑 NOVO: Clicar na aba "Banda Larga"
+// ============================================================================
+async function clicarAbaBandaLarga(page) {
+  console.log('   📑 Clicando na aba "Banda Larga"...');
+  
+  // Procura a aba pelo texto exato
+  const abas = await page.$$('.mat-tab-label');
+  let abaEncontrada = null;
+  
+  for (const aba of abas) {
+    const texto = await page.evaluate(el => el.innerText.trim(), aba);
+    if (texto.toLowerCase().includes('banda larga')) {
+      abaEncontrada = aba;
+      break;
+    }
+  }
+  
+  if (!abaEncontrada) {
+    throw new Error('Aba "Banda Larga" não encontrada na página');
+  }
+  
+  await abaEncontrada.click();
+  await aguardar(1500); // Aguarda conteúdo da aba carregar
+  console.log('   ✅ Aba "Banda Larga" ativada!');
+}
+
+// ============================================================================
+// 📂 NOVO: Expandir painel "Informações de Bloqueios"
+// ============================================================================
+async function expandirPainelBloqueios(page) {
+  console.log('   📂 Expandindo painel "Informações de Bloqueios"...');
+  
+  const headers = await page.$$('mat-expansion-panel-header');
+  let headerEncontrado = null;
+  
+  for (const header of headers) {
+    const texto = await page.evaluate(el => el.innerText.trim(), header);
+    if (texto.toLowerCase().includes('informações de bloqueios') || 
+        texto.toLowerCase().includes('informacoes de bloqueios')) {
+      headerEncontrado = header;
+      break;
+    }
+  }
+  
+  if (!headerEncontrado) {
+    throw new Error('Painel "Informações de Bloqueios" não encontrado');
+  }
+  
+  // Verifica se já está expandido
+  const estaExpandido = await page.evaluate(
+    el => el.closest('mat-expansion-panel')?.classList.contains('mat-expanded'),
+    headerEncontrado
+  );
+  
+  if (!estaExpandido) {
+    await headerEncontrado.click();
+    await aguardar(1000);
+    console.log('   ✅ Painel expandido!');
+  } else {
+    console.log('   ✅ Painel já estava expandido!');
+  }
+}
+
+// ============================================================================
+// 📊 NOVO: Extrair informações do painel de bloqueios
+// ============================================================================
+async function extrairInformacoesBloqueio(page) {
+  console.log('   📊 Extraindo informações de bloqueio...');
+  
+  // Pega todos os <p> dentro do painel expandido
+  const linhas = await page.evaluate(() => {
+    // Busca o painel que contém "Informações de Bloqueios"
+    const headers = Array.from(document.querySelectorAll('mat-expansion-panel-header'));
+    const headerAlvo = headers.find(h => {
+      const t = h.innerText.toLowerCase();
+      return t.includes('informações de bloqueios') || t.includes('informacoes de bloqueios');
+    });
+    
+    if (!headerAlvo) return [];
+    
+    const painel = headerAlvo.closest('mat-expansion-panel');
+    if (!painel) return [];
+    
+    const ps = painel.querySelectorAll('.mat-expansion-panel-body p');
+    return Array.from(ps).map(p => p.innerText.trim()).filter(t => t.length > 0);
+  });
+  
+  if (linhas.length === 0) {
+    console.log('   ⚠️ Nenhuma informação de bloqueio encontrada');
+    return {};
+  }
+  
+  // Parseia cada linha no formato "Label: Valor"
+  const dados = {};
+  for (const linha of linhas) {
+    // Divide no primeiro ":" encontrado
+    const indiceDoisPontos = linha.indexOf(':');
+    if (indiceDoisPontos === -1) continue;
+    
+    const label = linha.substring(0, indiceDoisPontos).trim();
+    const valor = linha.substring(indiceDoisPontos + 1).trim();
+    
+    if (!label || !valor) continue;
+    
+    // Sanitiza o label para virar nome de coluna CSV
+    const chave = sanitizarChave(label);
+    dados[chave] = valor;
+  }
+  
+  console.log(`   ✅ ${Object.keys(dados).length} informação(ões) extraída(s)`);
+  return dados;
+}
+
+// ============================================================================
+// 🔧 Helper: Sanitizar label para nome de coluna CSV
+// ============================================================================
+function sanitizarChave(label) {
+  return label
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Remove acentos
+    .replace(/\([^)]*\)/g, '')       // Remove parênteses e conteúdo
+    .replace(/[^a-z0-9\s]/g, '')     // Remove caracteres especiais
+    .trim()
+    .replace(/\s+/g, '_');           // Espaços viram underscore
+}
+
+// ============================================================================
+// 🎯 Processar UM ID (ATUALIZADO)
 // ============================================================================
 async function processarUmId(page, idFibra) {
-  const resultado = { id_fibra: idFibra, status: 'falha', timestamp: new Date().toISOString(), mensagem: '', dados_extraidos: null };
+  const resultado = {
+    id_fibra: idFibra,
+    status: 'falha',
+    timestamp: new Date().toISOString(),
+    mensagem: '',
+    dados_extraidos: null,
+    bloqueios: {} // ✅ NOVO: armazenar dados de bloqueio
+  };
+  
   try {
+    // 1. Garantir que está na home
     const estaNaHome = await page.$(CONFIG.selectors.homeState);
     if (!estaNaHome) {
-      console.log(`   🔄 Recarregando página para garantir que está na home...`);
+      console.log(`   🔄 Recarregando página...`);
       await page.goto(CONFIG.url, { waitUntil: 'networkidle2', timeout: CONFIG.timeouts.navigation });
       await page.waitForSelector(CONFIG.selectors.homeState, { visible: true, timeout: 15000 });
     }
     
+    // 2. Limpar e digitar ID
     const searchSelector = CONFIG.selectors.searchInput;
     await page.waitForSelector(searchSelector, { visible: true, timeout: 10000 });
     await page.click(searchSelector);
-    
-    // Limpar campo de forma robusta
     await page.keyboard.down('Control');
     await page.keyboard.press('A');
     await page.keyboard.up('Control');
@@ -106,62 +233,54 @@ async function processarUmId(page, idFibra) {
     
     await page.type(searchSelector, idFibra, { delay: 60 });
     
+    // 3. Clicar em Buscar
     await page.waitForSelector(CONFIG.selectors.searchButton, { visible: true, timeout: 5000 });
     await page.click(CONFIG.selectors.searchButton);
     
+    // 4. Aguardar resultado
     await page.waitForFunction(
-      (sel) => document.querySelector(sel.resultTable) || document.querySelector(sel.resultCard) || document.querySelector(sel.errorMessage),
+      (sel) => document.querySelector(sel.resultTable) || 
+               document.querySelector(sel.resultCard) || 
+               document.querySelector(sel.errorMessage) ||
+               document.querySelector('.mat-tab-label'),
       { timeout: CONFIG.timeouts.search },
       CONFIG.selectors
     );
     
     const temErro = await page.$(CONFIG.selectors.errorMessage);
     if (temErro) {
-      const erroTexto = await page.evaluate((sel) => document.querySelector(sel)?.innerText || 'Erro desconhecido', CONFIG.selectors.errorMessage);
+      const erroTexto = await page.evaluate(
+        (sel) => document.querySelector(sel)?.innerText || 'Erro desconhecido',
+        CONFIG.selectors.errorMessage
+      );
       resultado.mensagem = `Erro na busca: ${erroTexto}`;
       return resultado;
     }
     
-    const dados = await extrairDados(page);
-    if (dados.length === 0) {
-      resultado.mensagem = 'Nenhum dado retornado';
-      return resultado;
-    }
+    // 5. ✅ NOVO FLUXO: Clicar em "Banda Larga" → Expandir "Informações de Bloqueios" → Extrair
+    await clicarAbaBandaLarga(page);
+    await expandirPainelBloqueios(page);
+    resultado.bloqueios = await extrairInformacoesBloqueio(page);
     
+    // 6. Screenshot individual
     const screenshotPath = `${CONFIG.files.outputFolder}/${idFibra.replace(/[^a-z0-9]/gi, '_')}.png`;
     await page.screenshot({ path: screenshotPath, fullPage: true });
     
     resultado.status = 'sucesso';
-    resultado.mensagem = `${dados.length} registro(s) extraído(s)`;
-    resultado.dados_extraidos = dados;
+    const qtdBloqueios = Object.keys(resultado.bloqueios).length;
+    resultado.mensagem = `${qtdBloqueios} informação(ões) de bloqueio extraída(s)`;
+    
     return resultado;
+    
   } catch (error) {
     resultado.mensagem = `Erro: ${error.message}`;
     return resultado;
   }
 }
 
-async function extrairDados(page) {
-  return await page.evaluate(() => {
-    const dados = [];
-    const headers = Array.from(document.querySelectorAll('.mat-header-cell')).map(h => h.innerText.trim().replace(/\s+/g, '_').toLowerCase());
-    const linhas = document.querySelectorAll('.mat-table tbody tr, .mat-row');
-    linhas.forEach(linha => {
-      const colunas = linha.querySelectorAll('.mat-cell, td');
-      const linhaDados = {};
-      colunas.forEach((col, idx) => { linhaDados[headers[idx] || `coluna_${idx}`] = col.innerText.trim(); });
-      if (Object.keys(linhaDados).length > 0) dados.push(linhaDados);
-    });
-    if (dados.length === 0) {
-      document.querySelectorAll('.ui-card, .mat-card').forEach((card, idx) => {
-        const texto = card.innerText.trim();
-        if (texto) dados.push({ card_indice: idx + 1, conteudo: texto });
-      });
-    }
-    return dados;
-  });
-}
-
+// ============================================================================
+// 🛡️ Anti-detecção
+// ============================================================================
 async function configurarAntiDetecao(page) {
   await page.setUserAgent(CONFIG.network.userAgent);
   await page.setExtraHTTPHeaders(CONFIG.network.extraHeaders);
@@ -175,7 +294,8 @@ module.exports = {
   aguardar,
   aguardarEnter,
   lerCsvEntrada,
-  fazerLoginAutomatico, // Exportando a nova função
+  fazerLoginAutomatico,
   processarUmId,
-  configurarAntiDetecao
+  configurarAntiDetecao,
+  sanitizarChave // ✅ Exportado para uso no bot.js
 };
