@@ -1,73 +1,159 @@
-// src/lib/bot/config.js
+// [MAIN] Orquestrador do Robô Unificado
+const config = require("./config/config");
+const {
+  obterNavegador,
+  obterPagina,
+  configurarPagina,
+  desconectarDoChrome,
+} = require("./lib/browser");
+const { garantirSessao } = require("./lib/session");
+const { processarWFM, abrirParaInspecaoWFM } = require("./lib/wfm");
+// ✅ Substitua a linha 11 por esta rota exata:
+const { processarGPS } = require('./lib/gps-next/gps');
 
-const CONFIG = {
-  url: "https://sdu.redecorp.br/DiagnoseServiceProblem/home",
-  executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-  idFibra: "SPO-76438046-069", 
-  
-  // 📂 Perfil do Chrome (Descomente para manter sessão logada)
-  // userDataDir: 'C:\\Users\\A0161921\\AppData\\Local\\Google\\Chrome\\User Data',
-  userDataDir: null,
-  
-  network: {
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    ignoreHTTPSErrors: true,
-    extraHeaders: {
-      'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-      'Accept-Encoding': 'gzip, deflate, br',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-      'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-      'sec-ch-ua-mobile': '?0',
-      'sec-ch-ua-platform': '"Windows"',
-      'Upgrade-Insecure-Requests': '1',
-      'Sec-Fetch-Site': 'none',
-      'Sec-Fetch-Mode': 'navigate',
-      'Sec-Fetch-User': '?1',
-      'Sec-Fetch-Dest': 'document'
-    }
-  },
-  
-  timeouts: {
-    navigation: 90000,
-    element: 20000,
-    dropdown: 15000,
-    search: 20000,
-    loginValidation: 120000
-  },
-  
-  retry: {
-    maxAttempts: 3,
-    delayBetweenAttempts: 5000
-  },
-  
-  selectors: {
-    loginIndicators: [
-      'input[type="password"]', 
-      'input[name="password"]',
-      'input[id*="password" i]', 
-      'input[id*="senha" i]',
-      'form.login', 
-      '#login-form'
-    ],
-    homeState: ".ui-home-state",
-    
-    // ✅ ATUALIZADO: Mira diretamente no componente Angular Material, ignorando wrappers instáveis
-    dropdownTrigger: 'mat-select',
-    
-    // ✅ Seletor do input de busca já validado anteriormente
-    searchInput: 'input.mat-input-element[formcontrolname="search"]',
-    
-    searchButton: '.ui-button-home',
-    resultTable: '.mat-table',
-    resultCard: '.ui-card',
-    errorMessage: '.mat-error, .mat-snack-bar-container'
-  },
-  
-  files: {
-    successScreenshot: "sucesso_busca.png",
-    errorScreenshot: "erro_tela.png",
-    csvOutput: "resultado_busca.csv"
+
+
+// Módulo Siebel
+const { processarSiebel, abrirParaInspecaoSiebel } = require("./lib/GPS-siebel");
+const { mostrarMenu, criarInterface } = require("./ui/menu");
+
+(async () => {
+  console.clear();
+  console.log("🚀 Robô Unificado iniciado...\n");
+
+  let browser;
+  const rl = criarInterface();
+  let ativo = true;
+
+  // Helper seguro para pausar o terminal e aguardar o operador
+  const aguardarVoltar = () => new Promise((res) => {
+    rl.question("\n↩️ Pressione [ENTER] para voltar ao menu principal...", () => res());
+  });
+
+  try {
+    // Conecta ao Chrome aberto via CDP apenas uma vez
+    browser = await obterNavegador(config);
+  } catch (err) {
+    console.error("❌ Erro fatal ao conectar ao Google Chrome (CDP):", err.message);
+    console.error("💡 Verifique se o Chrome foi iniciado com as flags de depuração remota.");
+    rl.close();
+    process.exit(1);
   }
-};
 
-module.exports = CONFIG;
+  // Loop principal com try/catch interno para garantir resiliência
+  while (ativo) {
+    try {
+      console.clear(); // Mantém o terminal do operador sempre limpo e organizado
+      const op = await mostrarMenu(rl);
+      let page;
+
+      switch (op) {
+        case "1":
+          console.clear();
+          console.log('▶️ [WFM] Iniciando extração de CPFs em lote...');
+          page = await obterPagina(browser, "appwfm.gvt.net.br");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "wfm", rl, config);
+          await processarWFM(page, config, rl);
+          await aguardarVoltar();
+          break;
+
+        case "2":
+          console.clear();
+          console.log('▶️ [GPS] Iniciando Tipificação por UNIDADE...');
+          page = await obterPagina(browser, "gps");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "gps", rl, config);
+          await processarGPS(page, "unidade", config, rl);
+          await aguardarVoltar();
+          break;
+
+        case "3":
+          console.clear();
+          console.log('▶️ [GPS] Iniciando Tipificação por GRUPO...');
+          page = await obterPagina(browser, "gps");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "gps", rl, config);
+          await processarGPS(page, "grupo", config, rl);
+          await aguardarVoltar();
+          break;
+
+        case "4":
+          console.clear();
+          console.log("🔍 [WFM] Abrindo para inspeção/ajustes manuais...");
+          page = await obterPagina(browser, "appwfm.gvt.net.br");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "wfm", rl, config);
+          await abrirParaInspecaoWFM(page, config);
+          await aguardarVoltar();
+          break;
+
+        case "5":
+          console.clear();
+          console.log("🔍 [GPS] Abrindo para inspeção/ajustes manuais...");
+          page = await obterPagina(browser, "gps");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "gps", rl, config);
+          await abrirParaInspecaoGPS(page, config);
+          await aguardarVoltar();
+          break;
+
+        case "6":
+          console.clear();
+          console.log("🗄️ [Siebel] Iniciando Tipificação por UNIDADE...");
+          page = await obterPagina(browser, "siebel");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "siebel", rl, config);
+          await processarSiebel(page, "unidade", config, rl);
+          await aguardarVoltar();
+          break;
+
+        case "7":
+          console.clear();
+          console.log("🗄️ [Siebel] Iniciando Tipificação por GRUPO...");
+          page = await obterPagina(browser, "siebel");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "siebel", rl, config);
+          await processarSiebel(page, "grupo", config, rl);
+          await aguardarVoltar();
+          break;
+
+        case "8":
+          console.clear();
+          console.log("🔍 [Siebel] Abrindo para inspeção/ajustes manuais...");
+          page = await obterPagina(browser, "siebel");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "siebel", rl, config);
+          await abrirParaInspecaoSiebel(page, config);
+          await aguardarVoltar();
+          break;
+
+        case "9":
+          console.log("\n👋 Encerrando aplicação...");
+          ativo = false;
+          break;
+
+        default:
+          console.log("⚠️ Opção inválida! Escolha um número de 1 a 9.");
+          await new Promise(r => setTimeout(r, 1500));
+      }
+    } catch (err) {
+      console.error("\n❌ Erro na execução da opção escolhida:", err.message);
+      console.log("💡 O estado do robô foi preservado para evitar quedas.");
+      await aguardarVoltar();
+    }
+  }
+
+  // Desconexão limpa e segura de recursos
+  rl.close();
+  if (browser) {
+    await desconectarDoChrome(browser);
+  }
+  console.log("✅ Programa finalizado com sucesso!");
+  process.exit(0);
+})();
+
+// Captura falhas críticas fora do escopo principal para evitar travamentos de terminal
+process.on('unhandledRejection', (erro) => {
+  console.error('\n❌ Um erro assíncrono inesperado ocorreu no ecossistema:', erro.message);
+});
