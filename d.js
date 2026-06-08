@@ -1,11 +1,15 @@
- Pressione ENTER quando estiver logado e na HOME...
-✅ Login validado! Home detectada.
+// src/lib/browser.js
+// Dentro da função obterPagina(), adicione o case "sdu":
 
-🖱️ Abrindo menu de seleção...
-
-❌ Erro durante a execução: Opção "ID Fibra" não encontrada. Total de opções: 3
-📸 Screenshot de erro salvo: erro_tela.png
-
-🔒 Fechando navegador...
-✅ Robô finalizado.
-PS C:\Users\A0161921\Desktop\auto-robo-main> 
+async function obterPagina(browser, target) {
+  // ... código existente
+  
+  const targets = {
+    'wfm': 'appwfm.gvt.net.br',
+    'gps': 'gps', // ou a URL real
+    'siebel': 'siebel', // ou a URL real
+    'sdu': 'sdu.redecorp.br' // ✅ NOVO
+  };
+  
+  // ... resto do código
+}
