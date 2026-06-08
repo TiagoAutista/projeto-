@@ -1,10 +1,11 @@
 // src/lib/bot/config.js
+
 const CONFIG = {
-  url: "https://sdu.redecororp.br/DiagnoseServiceProblem/home",
+  url: "https://sdu.redecorp.br/DiagnoseServiceProblem/home",
   executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-  idFibra: "SPO-76438046-069",
+  idFibra: "SPO-76438046-069", // 🔄 Altere aqui o ID que deseja buscar
   
-  // 📂 Perfil do Chrome (Descomente para manter sessão logada)
+  // 📂 Perfil do Chrome (Descomente a linha abaixo para manter a sessão logada e pular o login manual)
   // userDataDir: 'C:\\Users\\A0161921\\AppData\\Local\\Google\\Chrome\\User Data',
   userDataDir: null,
   
@@ -41,13 +42,19 @@ const CONFIG = {
   
   selectors: {
     loginIndicators: [
-      'input[type="password"]', 'input[name="password"]',
-      'input[id*="password" i]', 'input[id*="senha" i]',
-      'form.login', '#login-form'
+      'input[type="password"]', 
+      'input[name="password"]',
+      'input[id*="password" i]', 
+      'input[id*="senha" i]',
+      'form.login', 
+      '#login-form'
     ],
     homeState: ".ui-home-state",
     dropdownTrigger: '.ui-home-mat-form-field-selecionar .mat-select-trigger',
-    searchInput: '.ui-home-mat-form-field-pesquisar input[formcontrolname="search"]',
+    
+    // ✅ ATUALIZADO: Seletor robusto e infalível baseado no HTML fornecido
+    searchInput: 'input.mat-input-element[formcontrolname="search"]',
+    
     searchButton: '.ui-button-home',
     resultTable: '.mat-table',
     resultCard: '.ui-card',
