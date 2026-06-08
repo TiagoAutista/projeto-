@@ -1,188 +1,159 @@
-// src/lib/sdu/sdu.js
-// Módulo SDU - Diagnose Service Problem (ID Fibra)
+// [MAIN] Orquestrador do Robô Unificado
+const config = require("./config/config");
+const {
+  obterNavegador,
+  obterPagina,
+  configurarPagina,
+  desconectarDoChrome,
+} = require("./lib/browser");
+const { garantirSessao } = require("./lib/session");
+const { processarWFM, abrirParaInspecaoWFM } = require("./lib/wfm");
+// ✅ Substitua a linha 11 por esta rota exata:
+const { processarGPS } = require('./lib/gps-next/gps');
 
-const fs = require('fs');
-const path = require('path');
-const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 
-const { aguardar, aguardarEnter } = require('../helpers');
 
-// ============================================================================
-// 🔧 Função Principal de Processamento
-// ============================================================================
-async function processarSDU(page, config, rl) {
-  console.log('🔍 [SDU] Iniciando busca de ID Fibra...\n');
+// Módulo Siebel
+const { processarSiebel, abrirParaInspecaoSiebel } = require("./lib/GPS-siebel");
+const { mostrarMenu, criarInterface } = require("./ui/menu");
 
-  const idFibra = await perguntarID(rl);
-  if (!idFibra) {
-    console.log('⚠️ Operação cancelada pelo operador.');
-    return;
-  }
+(async () => {
+  console.clear();
+  console.log("🚀 Robô Unificado iniciado...\n");
 
-  console.log(`🎯 ID a buscar: ${idFibra}\n`);
+  let browser;
+  const rl = criarInterface();
+  let ativo = true;
 
-  // 1. Navegar para a URL do SDU
-  const url = config.sdu?.url || 'https://sdu.redecorp.br/DiagnoseServiceProblem/home';
-  console.log(`🌐 Acessando: ${url}`);
-  
-  try {
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
-  } catch (err) {
-    throw new Error(`Falha ao acessar SDU: ${err.message}`);
-  }
-
-  // 2. Aguardar home carregar
-  console.log('⏳ Aguardando interface carregar...');
-  const homeSelector = config.sdu?.selectors?.homeState || '.ui-home-state';
-  
-  try {
-    await page.waitForSelector(homeSelector, { visible: true, timeout: 20000 });
-    console.log('✅ Home do SDU detectada!\n');
-  } catch (err) {
-    throw new Error('Não foi possível detectar a home do SDU. Verifique se está logado.');
-  }
-
-  // 3. Digitar ID diretamente na barra de pesquisa (sem dropdown)
-  console.log(`⌨️ Digitando ID: ${idFibra}`);
-  const searchSelector = config.sdu?.selectors?.searchInput || 'input.mat-input-element[formcontrolname="search"]';
-  
-  await page.waitForSelector(searchSelector, { visible: true, timeout: 15000 });
-  await page.click(searchSelector);
-  await page.$eval(searchSelector, (el) => (el.value = ''));
-  await page.type(searchSelector, idFibra, { delay: 80 });
-  console.log('✅ ID digitado!\n');
-
-  // 4. Clicar em Buscar
-  console.log('🖱️ Clicando em "Buscar"...');
-  const buttonSelector = config.sdu?.selectors?.searchButton || '.ui-button-home';
-  await page.waitForSelector(buttonSelector, { visible: true, timeout: 10000 });
-  await page.click(buttonSelector);
-  console.log('✅ Busca iniciada!\n');
-
-  // 5. Aguardar resultado
-  console.log('⏳ Aguardando resultado...');
-  const selectors = config.sdu?.selectors || {};
-  await page.waitForFunction(
-    (sel) => {
-      return document.querySelector(sel.resultTable) || 
-             document.querySelector(sel.resultCard) || 
-             document.querySelector(sel.errorMessage);
-    },
-    { timeout: 20000 },
-    {
-      resultTable: selectors.resultTable || '.mat-table',
-      resultCard: selectors.resultCard || '.ui-card',
-      errorMessage: selectors.errorMessage || '.mat-error, .mat-snack-bar-container'
-    }
-  );
-
-  // Verificar erro
-  const errorSelector = selectors.errorMessage || '.mat-error, .mat-snack-bar-container';
-  const temErro = await page.$(errorSelector);
-  if (temErro) {
-    const erroTexto = await page.evaluate((sel) => document.querySelector(sel)?.innerText || 'Erro desconhecido', errorSelector);
-    throw new Error(`Busca falhou: ${erroTexto}`);
-  }
-
-  console.log('✅ Busca concluída!\n');
-
-  // 6. Extrair dados
-  console.log('📊 Extraindo dados...');
-  const dados = await extrairDados(page);
-  console.log(`📦 Registros encontrados: ${dados.length}\n`);
-
-  if (dados.length === 0) {
-    console.log('⚠️ Nenhum dado encontrado para este ID.');
-    return;
-  }
-
-  console.log('📋 Prévia dos dados:');
-  console.log(JSON.stringify(dados[0], null, 2));
-
-  // 7. Salvar screenshot
-  const screenshotPath = path.join(process.cwd(), `sdu_${idFibra}.png`);
-  await page.screenshot({ path: screenshotPath, fullPage: true });
-  console.log(`\n📸 Screenshot: ${screenshotPath}`);
-
-  // 8. Salvar CSV
-  const csvPath = path.join(process.cwd(), `sdu_${idFibra}.csv`);
-  const csvWriter = createCsvWriter({
-    path: csvPath,
-    header: Object.keys(dados[0]).map(key => ({ id: key, title: key }))
+  // Helper seguro para pausar o terminal e aguardar o operador
+  const aguardarVoltar = () => new Promise((res) => {
+    rl.question("\n↩️ Pressione [ENTER] para voltar ao menu principal...", () => res());
   });
-  await csvWriter.writeRecords(dados);
-  console.log(`📄 CSV: ${csvPath}`);
 
-  console.log('\n🎉 Processamento SDU concluído!');
-}
+  try {
+    // Conecta ao Chrome aberto via CDP apenas uma vez
+    browser = await obterNavegador(config);
+  } catch (err) {
+    console.error("❌ Erro fatal ao conectar ao Google Chrome (CDP):", err.message);
+    console.error("💡 Verifique se o Chrome foi iniciado com as flags de depuração remota.");
+    rl.close();
+    process.exit(1);
+  }
 
-// ============================================================================
-// 🔍 Modo Inspeção (abre a página e pausa para ajustes manuais)
-// ============================================================================
-async function abrirParaInspecaoSDU(page, config) {
-  console.log('🔍 [SDU] Abrindo para inspeção manual...\n');
+  // Loop principal com try/catch interno para garantir resiliência
+  while (ativo) {
+    try {
+      console.clear(); // Mantém o terminal do operador sempre limpo e organizado
+      const op = await mostrarMenu(rl);
+      let page;
 
-  const url = config.sdu?.url || 'https://sdu.redecorp.br/DiagnoseServiceProblem/home';
-  console.log(`🌐 Acessando: ${url}`);
-  
-  await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
-  
-  console.log('\n📋 INSTRUÇÕES:');
-  console.log('   - A página está aberta no navegador');
-  console.log('   - Faça ajustes manuais se necessário');
-  console.log('   - Pressione ENTER no terminal para continuar\n');
-  
-  await aguardarEnter('✅ Pressione ENTER quando terminar a inspeção...');
-}
+      switch (op) {
+        case "1":
+          console.clear();
+          console.log('▶️ [WFM] Iniciando extração de CPFs em lote...');
+          page = await obterPagina(browser, "appwfm.gvt.net.br");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "wfm", rl, config);
+          await processarWFM(page, config, rl);
+          await aguardarVoltar();
+          break;
 
-// ============================================================================
-// ❓ Perguntar ID ao operador
-// ============================================================================
-async function perguntarID(rl) {
-  return new Promise((resolve) => {
-    rl.question('🔍 Digite o ID Fibra (ex: SPO-76438046-069): ', (answer) => {
-      const id = answer.trim();
-      if (!id) {
-        resolve(null);
-      } else {
-        resolve(id);
+        case "2":
+          console.clear();
+          console.log('▶️ [GPS] Iniciando Tipificação por UNIDADE...');
+          page = await obterPagina(browser, "gps");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "gps", rl, config);
+          await processarGPS(page, "unidade", config, rl);
+          await aguardarVoltar();
+          break;
+
+        case "3":
+          console.clear();
+          console.log('▶️ [GPS] Iniciando Tipificação por GRUPO...');
+          page = await obterPagina(browser, "gps");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "gps", rl, config);
+          await processarGPS(page, "grupo", config, rl);
+          await aguardarVoltar();
+          break;
+
+        case "4":
+          console.clear();
+          console.log("🔍 [WFM] Abrindo para inspeção/ajustes manuais...");
+          page = await obterPagina(browser, "appwfm.gvt.net.br");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "wfm", rl, config);
+          await abrirParaInspecaoWFM(page, config);
+          await aguardarVoltar();
+          break;
+
+        case "5":
+          console.clear();
+          console.log("🔍 [GPS] Abrindo para inspeção/ajustes manuais...");
+          page = await obterPagina(browser, "gps");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "gps", rl, config);
+          await abrirParaInspecaoGPS(page, config);
+          await aguardarVoltar();
+          break;
+
+        case "6":
+          console.clear();
+          console.log("🗄️ [Siebel] Iniciando Tipificação por UNIDADE...");
+          page = await obterPagina(browser, "siebel");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "siebel", rl, config);
+          await processarSiebel(page, "unidade", config, rl);
+          await aguardarVoltar();
+          break;
+
+        case "7":
+          console.clear();
+          console.log("🗄️ [Siebel] Iniciando Tipificação por GRUPO...");
+          page = await obterPagina(browser, "siebel");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "siebel", rl, config);
+          await processarSiebel(page, "grupo", config, rl);
+          await aguardarVoltar();
+          break;
+
+        case "8":
+          console.clear();
+          console.log("🔍 [Siebel] Abrindo para inspeção/ajustes manuais...");
+          page = await obterPagina(browser, "siebel");
+          await configurarPagina(page, config);
+          await garantirSessao(page, "siebel", rl, config);
+          await abrirParaInspecaoSiebel(page, config);
+          await aguardarVoltar();
+          break;
+
+        case "9":
+          console.log("\n👋 Encerrando aplicação...");
+          ativo = false;
+          break;
+
+        default:
+          console.log("⚠️ Opção inválida! Escolha um número de 1 a 9.");
+          await new Promise(r => setTimeout(r, 1500));
       }
-    });
-  });
-}
-
-// ============================================================================
-// 📊 Extrair dados da página (tabela ou cards)
-// ============================================================================
-async function extrairDados(page) {
-  return await page.evaluate(() => {
-    const dados = [];
-    
-    // Tentar extrair de tabela
-    const headers = Array.from(document.querySelectorAll('.mat-header-cell')).map(h => 
-      h.innerText.trim().replace(/\s+/g, '_').toLowerCase()
-    );
-    
-    const linhas = document.querySelectorAll('.mat-table tbody tr, .mat-row');
-    linhas.forEach(linha => {
-      const colunas = linha.querySelectorAll('.mat-cell, td');
-      const linhaDados = {};
-      colunas.forEach((col, idx) => {
-        linhaDados[headers[idx] || `coluna_${idx}`] = col.innerText.trim();
-      });
-      if (Object.keys(linhaDados).length > 0) dados.push(linhaDados);
-    });
-    
-    // Fallback para cards
-    if (dados.length === 0) {
-      document.querySelectorAll('.ui-card, .mat-card').forEach((card, idx) => {
-        const texto = card.innerText.trim();
-        if (texto) dados.push({ card_indice: idx + 1, conteudo: texto });
-      });
+    } catch (err) {
+      console.error("\n❌ Erro na execução da opção escolhida:", err.message);
+      console.log("💡 O estado do robô foi preservado para evitar quedas.");
+      await aguardarVoltar();
     }
-    
-    return dados;
-  });
-}
+  }
 
-module.exports = { processarSDU, abrirParaInspecaoSDU };
+  // Desconexão limpa e segura de recursos
+  rl.close();
+  if (browser) {
+    await desconectarDoChrome(browser);
+  }
+  console.log("✅ Programa finalizado com sucesso!");
+  process.exit(0);
+})();
+
+// Captura falhas críticas fora do escopo principal para evitar travamentos de terminal
+process.on('unhandledRejection', (erro) => {
+  console.error('\n❌ Um erro assíncrono inesperado ocorreu no ecossistema:', erro.message);
+});
