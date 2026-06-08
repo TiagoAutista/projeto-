@@ -1,10 +1,20 @@
-🔍 [SDU] Iniciando busca de ID Fibra...
-📑 [SDU.REDECORP.BR] Varrendo 1 aba(s) abertas no Chrome...
-🆕 [SDU.REDECORP.BR] Reaproveitando aba vazia detectada no navegador.
+// src/config/config.js
 
-❌ ERRO CRÍTICO: SDU_URL_BASE não configurada no ambiente!
+const config = {
+  // ... suas configurações existentes (wfm, gps, siebel, etc.)
+  
+  // ✅ ADICIONE ESTA SEÇÃO SDU
+  sdu: {
+    url: 'https://sdu.redecorp.br/DiagnoseServiceProblem/home',
+    selectors: {
+      homeState: '.ui-home-state',
+      searchInput: 'input.mat-input-element[formcontrolname="search"]',
+      searchButton: '.ui-button-home',
+      resultTable: '.mat-table',
+      resultCard: '.ui-card',
+      errorMessage: '.mat-error, .mat-snack-bar-container'
+    }
+  }
+};
 
-❌ Erro na execução da opção escolhida: URL base do SDU não foi localizada nas configurações.
-💡 O estado do robô foi preservado para evitar quedas.
-
-↩️ Pressione [ENTER] para voltar ao menu principal...
+module.exports = config;
