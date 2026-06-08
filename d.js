@@ -1,1 +1,11 @@
-<div class="mat-form-field-wrapper"><div class="mat-form-field-flex"><!----><!----><div class="mat-form-field-infix"><mat-select _ngcontent-pqq-c6="" class="mat-select ng-tns-c8-38 mat-select-required ng-star-inserted" required="" role="listbox" id="mat-select-2" tabindex="0" aria-labelledby="mat-form-field-label-13" aria-required="true" aria-disabled="false" aria-invalid="false" aria-multiselectable="false"><div class="mat-select-trigger" aria-hidden="true" cdk-overlay-origin=""><div class="mat-select-value"><!----><!----><span class="mat-select-value-text ng-tns-c8-38 ng-star-inserted"><!----><span class="ng-tns-c8-38 ng-star-inserted">Cliente</span><!----></span></div><div class="mat-select-arrow-wrapper"><div class="mat-select-arrow"></div></div></div><!----></mat-select><span class="mat-form-field-label-wrapper"><!----><label class="mat-form-field-label ng-tns-c3-37 ng-star-inserted" id="mat-form-field-label-13" for="mat-select-2" aria-owns="mat-select-2"><!----><!----><mat-label _ngcontent-pqq-c6="" class="ng-star-inserted">Selecionar</mat-label><!----><!----><span aria-hidden="true" class="mat-placeholder-required mat-form-field-required-marker ng-tns-c3-37 ng-star-inserted"> *</span></label></span></div><!----></div><!----><div class="mat-form-field-underline ng-tns-c3-37 ng-star-inserted"><span class="mat-form-field-ripple"></span></div><div class="mat-form-field-subscript-wrapper"><!----><!----><div class="mat-form-field-hint-wrapper ng-tns-c3-37 ng-trigger ng-trigger-transitionMessages ng-star-inserted" style="opacity: 1; transform: translateY(0%);"><!----><div class="mat-form-field-hint-spacer"></div></div></div></div>
+ Pressione ENTER quando estiver logado e na HOME...
+✅ Login validado! Home detectada.
+
+🖱️ Abrindo menu de seleção...
+
+❌ Erro durante a execução: Opção "ID Fibra" não encontrada. Total de opções: 3
+📸 Screenshot de erro salvo: erro_tela.png
+
+🔒 Fechando navegador...
+✅ Robô finalizado.
+PS C:\Users\A0161921\Desktop\auto-robo-main> 
