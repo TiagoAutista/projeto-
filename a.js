@@ -1,1 +1,52 @@
-<form _ngcontent-lat-c2="" novalidate="" class="ng-dirty ng-valid ng-touched"><mat-form-field _ngcontent-lat-c2="" class="ui-field mat-form-field ng-tns-c3-0 mat-primary mat-form-field-type-mat-input mat-form-field-appearance-legacy mat-form-field-can-float mat-form-field-has-label mat-form-field-hide-placeholder mat-form-field-should-float ng-dirty ng-valid ng-touched"><div class="mat-form-field-wrapper"><div class="mat-form-field-flex"><!----><!----><div class="mat-form-field-infix"><input _ngcontent-lat-c2="" autofocus="" class="mat-input-element mat-form-field-autofill-control cdk-text-field-autofill-monitored ng-dirty ng-valid ng-touched" formcontrolname="username" matinput="" placeholder="Digite a sua matrícula" required="" type="text" id="mat-input-0" aria-invalid="false" aria-required="true"><span class="mat-form-field-label-wrapper"><!----><label class="mat-form-field-label ng-tns-c3-0 ng-star-inserted" id="mat-form-field-label-1" for="mat-input-0" aria-owns="mat-input-0"><!----><!----><span class="ng-tns-c3-0 ng-star-inserted">Digite a sua matrícula</span><!----><!----><span aria-hidden="true" class="mat-placeholder-required mat-form-field-required-marker ng-tns-c3-0 ng-star-inserted"> *</span></label></span></div><!----></div><!----><div class="mat-form-field-underline ng-tns-c3-0 ng-star-inserted"><span class="mat-form-field-ripple"></span></div><div class="mat-form-field-subscript-wrapper"><!----><!----><div class="mat-form-field-hint-wrapper ng-tns-c3-0 ng-trigger ng-trigger-transitionMessages ng-star-inserted" style="opacity: 1; transform: translateY(0%);"><!----><div class="mat-form-field-hint-spacer"></div></div></div></div></mat-form-field><mat-form-field _ngcontent-lat-c2="" class="ui-field mat-form-field ng-tns-c3-1 mat-primary mat-form-field-type-mat-input mat-form-field-appearance-legacy mat-form-field-can-float mat-form-field-has-label mat-form-field-hide-placeholder mat-form-field-should-float ng-dirty ng-valid ng-touched"><div class="mat-form-field-wrapper"><div class="mat-form-field-flex"><!----><!----><div class="mat-form-field-infix"><input _ngcontent-lat-c2="" autocomplete="on" class="mat-input-element mat-form-field-autofill-control cdk-text-field-autofill-monitored ng-dirty ng-valid ng-touched" formcontrolname="password" matinput="" placeholder="Digite sua senha" required="" type="password" id="mat-input-1" aria-invalid="false" aria-required="true"><span class="mat-form-field-label-wrapper"><!----><label class="mat-form-field-label ng-tns-c3-1 ng-star-inserted" id="mat-form-field-label-3" for="mat-input-1" aria-owns="mat-input-1"><!----><!----><span class="ng-tns-c3-1 ng-star-inserted">Digite sua senha</span><!----><!----><span aria-hidden="true" class="mat-placeholder-required mat-form-field-required-marker ng-tns-c3-1 ng-star-inserted"> *</span></label></span></div><!----></div><!----><div class="mat-form-field-underline ng-tns-c3-1 ng-star-inserted"><span class="mat-form-field-ripple"></span></div><div class="mat-form-field-subscript-wrapper"><!----><!----><div class="mat-form-field-hint-wrapper ng-tns-c3-1 ng-trigger ng-trigger-transitionMessages ng-star-inserted" style="opacity: 1; transform: translateY(0%);"><!----><div class="mat-form-field-hint-spacer"></div></div></div></div></mat-form-field><!----><!----><!----><button _ngcontent-lat-c2="" class="ui-button-login mat-button mat-button-base ng-star-inserted" mat-button=""><span class="mat-button-wrapper"> Entrar </span><div class="mat-button-ripple mat-ripple" matripple=""></div><div class="mat-button-focus-overlay"></div></button><!----></form>
+// src/lib/bot/config.js
+
+const path = require('path');
+
+const CONFIG = {
+  url: "https://sdu.redecororp.br/DiagnoseServiceProblem/home",
+  executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+  userDataDir: null, // Descomente e ajuste se quiser salvar a sessão
+  
+  files: {
+    inputCsv: path.join(process.cwd(), 'ids.csv'),
+    outputCsv: path.join(process.cwd(), 'resultado_lote.csv'),
+    outputFolder: path.join(process.cwd(), 'sdu_resultados'),
+    errorScreenshot: "erro_geral.png"
+  },
+  
+  network: {
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    ignoreHTTPSErrors: true,
+    extraHeaders: {
+      'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+      'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': '"Windows"'
+    }
+  },
+  
+  timeouts: {
+    navigation: 90000,
+    element: 20000,
+    search: 20000,
+    loginValidation: 120000,
+    entreIds: 2000
+  },
+  
+  selectors: {
+    // ✅ SELETORES EXATOS BASEADOS NO HTML FORNECIDO
+    login: {
+      username: 'input[formcontrolname="username"]',
+      password: 'input[formcontrolname="password"]',
+      button: 'button.ui-button-login'
+    },
+    homeState: ".ui-home-state",
+    searchInput: 'input.mat-input-element[formcontrolname="search"]',
+    searchButton: '.ui-button-home',
+    resultTable: '.mat-table',
+    resultCard: '.ui-card',
+    errorMessage: '.mat-error, .mat-snack-bar-container'
+  }
+};
+
+module.exports = CONFIG;
