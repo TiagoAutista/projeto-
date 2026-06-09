@@ -1,80 +1,40 @@
-// ============================================================================
-// 📊 EXTRAIR INFORMAÇÕES (Com debug de texto bruto)
-// ============================================================================
-async function extrairInformacoesBloqueio(page) {
-  console.log('   📊 Extraindo informações de bloqueio...');
-  
-  const resultado = await page.evaluate(() => {
-    // Encontrar o painel com o título correto
-    const paineis = Array.from(document.querySelectorAll('mat-expansion-panel'));
-    const painelAlvo = paineis.find(p => {
-      const titulo = p.querySelector('mat-panel-title');
-      return titulo && titulo.innerText.toLowerCase().includes('informações de bloqueios');
-    });
-    
-    if (!painelAlvo) {
-      return { linhasBrutas: [], debug: 'Painel com título correto não encontrado.' };
-    }
-    
-    const body = painelAlvo.querySelector('.mat-expansion-panel-body');
-    if (!body) {
-      return { linhasBrutas: [], debug: '.mat-expansion-panel-body não encontrado.' };
-    }
-    
-    const ps = Array.from(body.querySelectorAll('p'));
-    
-    // Retorna os textos brutos para debugarmos
-    const linhasBrutas = ps.map(p => p.innerText.trim());
-    const linhasValidas = linhasBrutas.filter(texto => texto.length > 0 && texto.includes(':'));
-    
-    return { 
-      linhasBrutas,
-      linhasValidas,
-      debug: `Encontrados ${ps.length} <p> no total, ${linhasValidas.length} válidos (contêm ':').` 
-    };
-  });
-  
-  console.log(`   🔍 Debug extração: ${resultado.debug}`);
-  
-  // ✅ NOVO: Mostrar os textos brutos encontrados
-  if (resultado.linhasBrutas.length > 0) {
-    console.log('   📝 Textos brutos encontrados nos <p>:');
-    resultado.linhasBrutas.forEach((texto, i) => {
-      console.log(`      [${i}] "${texto}"`);
-    });
-  }
-  
-  if (!resultado.linhasValidas || resultado.linhasValidas.length === 0) {
-    console.log('   ⚠️ Nenhuma linha válida (com ":") encontrada.');
-    return {};
-  }
-  
-  const dados = {};
-  for (const linha of resultado.linhasValidas) {
-    const indiceDoisPontos = linha.indexOf(':');
-    if (indiceDoisPontos === -1) continue;
-    
-    const label = linha.substring(0, indiceDoisPontos).trim();
-    const valor = linha.substring(indiceDoisPontos + 1).trim();
-    
-    console.log(`   🔧 Parseando: Label="${label}" | Valor="${valor}"`);
-    
-    if (!label || !valor) {
-      console.log(`      ⚠️ Ignorado: label ou valor vazio`);
-      continue;
-    }
-    
-    const chave = sanitizarChave(label);
-    console.log(`      ➡️ Chave sanitizada: "${chave}"`);
-    
-    if (!chave) {
-      console.log(`      ⚠️ Ignorado: chave sanitizada ficou vazia`);
-      continue;
-    }
-    
-    dados[chave] = valor;
-  }
-  
-  console.log(`   ✅ ${Object.keys(dados).length} informação(ões) extraída(s) com sucesso!`);
-  return dados;
-}
+Processando: SPO-69089069-069
+──────────────────────────────────────────────────
+   ⏳ Aguardando resultado da busca...
+   📑 Clicando na aba "Banda Larga"...
+   ✅ Aba "Banda Larga" ativada!
+   📂 Localizando painel "Informações de Bloqueios"...
+   🔍 Encontrados 6 painéis:
+      [0] "Informações de Banda Larga" | expandido: true | aria: true
+      [1] "Informações de Bridge" | expandido: false | aria: false
+      [2] "" | expandido: false | aria: false
+      [3] "Informações Profile AAA" | expandido: false | aria: false
+      [4] "Autenticação" | expandido: false | aria: false
+      [5] "Informações de Bloqueios" | expandido: false | aria: false
+   🎯 Painel alvo localizado!
+   ⏳ Painel fechado. Tentando expandir...
+   ✓ Estratégia 1: Click no título executado
+   ⏳ Tentando estratégia 2: Click no header...
+   ⏳ Tentando estratégia 3: Click via JavaScript...
+   ✅ Painel expandido com sucesso!
+   ⏳ Aguardando conteúdo renderizar...
+   ✅ Conteúdo pronto para extração!
+   📊 Extraindo informações de bloqueio...
+   🔍 Debug extração: Encontrados 4 <p> no total, 3 válidos (contêm ':').
+   📝 Textos brutos encontrados nos <p>:
+      [0] "Status Bloqueio Banda Larga (Inventário CRM):"
+      [1] "Status Bloqueio Banda Larga (Radius/PSA):"
+      [2] "Status Bloqueio Wifi (ACS):"
+      [3] ""
+   🔧 Parseando: Label="Status Bloqueio Banda Larga (Inventário CRM)" | Valor=""
+      ⚠️ Ignorado: label ou valor vazio
+   🔧 Parseando: Label="Status Bloqueio Banda Larga (Radius/PSA)" | Valor=""
+      ⚠️ Ignorado: label ou valor vazio
+   🔧 Parseando: Label="Status Bloqueio Wifi (ACS)" | Valor=""
+      ⚠️ Ignorado: label ou valor vazio
+   ✅ 0 informação(ões) extraída(s) com sucesso!
+
+   ✅ 0 informação(ões) de bloqueio extraída(s)
+   ⚠️ Nenhuma informação de bloqueio encontrada
+
+Esta fazendo o busca muito rapido e o sistema e lento.
