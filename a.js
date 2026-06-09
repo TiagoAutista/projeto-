@@ -1,50 +1,34 @@
-// src/lib/bot/config.js
-const path = require('path');
+══════════════════════════════════════════════════════════════════════
+🔄 INICIANDO PROCESSAMENTO EM LOTE
+══════════════════════════════════════════════════════════════════════
 
-const CONFIG = {
-  url: "https://sdu.redecorp.br/DiagnoseServiceProblem/home",
-  executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-  userDataDir: null, // Descomente para manter sessão logada: 'C:\\Users\\SEU_USUARIO\\AppData\\Local\\Google\\Chrome\\User Data'
-  
-  files: {
-    inputCsv: path.join(process.cwd(), 'ids.csv'),
-    outputCsv: path.join(process.cwd(), 'resultado_lote.csv'),
-    outputFolder: path.join(process.cwd(), 'sdu_resultados'),
-    errorScreenshot: "erro_geral.png"
-  },
-  
-  network: {
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    ignoreHTTPSErrors: true,
-    extraHeaders: {
-      'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-      'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-      'sec-ch-ua-mobile': '?0',
-      'sec-ch-ua-platform': '"Windows"'
-    }
-  },
-  
-  timeouts: {
-    navigation: 90000,
-    element: 20000,
-    search: 20000,
-    loginValidation: 120000,
-    entreIds: 2000
-  },
-  
-  selectors: {
-    login: {
-      username: 'input[formcontrolname="username"]',
-      password: 'input[formcontrolname="password"]',
-      button: 'button.ui-button-login'
-    },
-    homeState: ".ui-home-state",
-    searchInput: 'input.mat-input-element[formcontrolname="search"]',
-    searchButton: '.ui-button-home',
-    resultTable: '.mat-table',
-    resultCard: '.ui-card',
-    errorMessage: '.mat-error, .mat-snack-bar-container'
-  }
-};
 
-module.exports = CONFIG;
+[1/5] 🔍 Processando: SPO-69089069-069
+──────────────────────────────────────────────────
+   ⏳ Aguardando resultado da busca...
+   📑 Clicando na aba "Banda Larga"...
+   ✅ Clique na aba executado!
+
+   👉 Verifique no navegador se você está na aba "Banda Larga".
+   Se estiver, pressione [ENTER] para o robô continuar...
+
+   ✅ Confirmação recebida. Continuando...
+
+   📂 Localizando painel "Informações de Bloqueios"...
+   🎯 Painel alvo localizado!
+   ⏳ Painel fechado. Preparando para expandir...
+   🖱️ Clique executado no título.
+   ✅ Painel expandido com sucesso!
+   ⏳ Aguardando o sistema lento carregar os dados (CRM/Radius/ACS)...
+   ✅ Dados carregados e visíveis na tela!
+   👉 Verifique no navegador se o "Informações de Bloqueios" foi expandido.
+   Se estiver, pressione [ENTER] para o robô continuar..
+   📊 Extraindo informações de bloqueio...
+   🔍 Debug: Encontrados 4 <p>, 3 válidos com ":".
+   📝 Textos encontrados:
+      [0] "Status Bloqueio Banda Larga (Inventário CRM):"
+      [1] "Status Bloqueio Banda Larga (Radius/PSA):"
+      [2] "Status Bloqueio Wifi (ACS):"
+   ✅ 0 informação(ões) extraída(s) com sucesso!
+
+   ✅ Painel aberto, mas sem dados de bloqueio
