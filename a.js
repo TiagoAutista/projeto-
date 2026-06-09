@@ -34,3 +34,36 @@
     }
   }
 }
+
+[1/5] 🔍 Processando: SPO-69089069-069
+──────────────────────────────────────────────────
+   ⏳ Aguardando resultado da busca...
+   📑 Clicando na aba "Banda Larga"...
+   ✅ Aba "Banda Larga" ativada!
+   📂 Localizando painel "Informações de Bloqueios"...
+   🎯 Painel alvo localizado!
+   ⏳ Painel fechado. Tentando expandir...
+   ✅ Painel expandido com sucesso!
+   ⏳ Sistema lento detectado. Aguardando renderização COMPLETA dos textos...
+   ⏳ Textos ainda incompletos. Aguardando... (1/8)
+   ⏳ Textos ainda incompletos. Aguardando... (2/8)
+   ⏳ Textos ainda incompletos. Aguardando... (3/8)
+   ⏳ Textos ainda incompletos. Aguardando... (4/8)
+   ⏳ Textos ainda incompletos. Aguardando... (5/8)
+   ⏳ Textos ainda incompletos. Aguardando... (6/8)
+   ⏳ Textos ainda incompletos. Aguardando... (7/8)
+   ⏳ Textos ainda incompletos. Aguardando... (8/8)
+   ⚠️ Tempo máximo de espera atingido. Tentando extrair mesmo assim...
+   📊 Extraindo informações de bloqueio...
+   🔍 Debug extração: Encontrados 4 <p>, 0 válidos.
+   📝 Textos brutos encontrados:
+      [0] ""
+      [1] ""
+      [2] ""
+      [3] ""
+   ⚠️ Nenhuma linha válida (com ":") encontrada.
+
+   ✅ 0 informação(ões) de bloqueio extraída(s)
+   ⚠️ Nenhuma informação de bloqueio encontrada
+
+Erro
