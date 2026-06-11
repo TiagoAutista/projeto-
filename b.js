@@ -1,4 +1,4 @@
-// login.js - Versão com fallback de nova aba manual
+// login.js - Versão que mantém a aba do layout aberta
 const { chromium } = require('playwright');
 const readline = require('readline');
 
@@ -90,6 +90,7 @@ const perguntarDadosBusca = () => {
 
         if (urlAtual.includes('layout.xhtml')) {
           console.log('📌 LAYOUT BASE detectado.');
+          console.log('🔒 MANTENDO ESTA ABA ABERTA (sessão do CID vinculada).');
           
           const match = urlAtual.match(/cid=(\d+)/);
           if (!match || !match[1]) {
@@ -101,81 +102,59 @@ const perguntarDadosBusca = () => {
           console.log(`🆔 CID: ${cid}`);
           
           const URLManobras = `http://sagreosp.telefonica.br/cpqd/oper/ManeuverFttxResource/ManeuverFttxResource.xhtml?faces-redirect=true&cid=${cid}`;
-          console.log(`🚀 Navegando para Manobras...`);
+          console.log(`🚀 Abrindo Manobras em NOVA ABA (layout permanece intacto)...`);
 
           // ====================================================================
-          // 🔑 SOLUÇÃO: Tentar goto, se falhar, abrir nova aba manualmente
+          // 🔑 SOLUÇÃO: Abrir Manobras em NOVA ABA, mantendo layout original
           // ====================================================================
           
-          let paginaManobras = null;
+          // Cria nova aba SEM fechar a do layout
+          const paginaManobras = await context.newPage();
           
-          // Tentativa 1: goto normal
           try {
-            console.log('🔄 Tentativa 1: goto na mesma aba...');
-            await novaAba.goto(URLManobras, { waitUntil: 'load', timeout: 15000 });
-            await novaAba.waitForTimeout(2000);
-            
-            if (novaAba.url().includes('ManeuverFttxResource')) {
-              paginaManobras = novaAba;
-              console.log('✅ Tentativa 1 funcionou!');
-            }
+            await paginaManobras.goto(URLManobras, { waitUntil: 'load', timeout: 30000 });
+            console.log('✅ Nova aba de Manobras aberta com sucesso!');
           } catch (e) {
-            console.log(`⚠️ Tentativa 1 falhou: ${e.message.substring(0, 60)}...`);
-          }
-          
-          // Tentativa 2: procurar em todas as abas
-          if (!paginaManobras) {
-            console.log('🔄 Tentativa 2: procurando em todas as abas...');
-            await new Promise(r => setTimeout(r, 2000));
+            console.log(`⚠️ Erro ao abrir nova aba: ${e.message.substring(0, 80)}...`);
             
-            const todasAbas = context.pages();
-            paginaManobras = todasAbas.find(p => {
-              try { return p.url().includes('ManeuverFttxResource'); } 
-              catch { return false; }
-            });
-            
-            if (paginaManobras) {
-              console.log('✅ Encontrado em outra aba!');
-            }
-          }
-          
-          // Tentativa 3: abrir nova aba manualmente
-          if (!paginaManobras) {
-            console.log('🔄 Tentativa 3: abrindo nova aba manualmente...');
-            
-            // Remove o faces-redirect=true para evitar o redirect agressivo
+            // Se falhar com faces-redirect, tenta sem ele
             const URLManobrasDireta = URLManobras.replace('faces-redirect=true&', '');
+            console.log(`🔄 Tentando sem faces-redirect: ${URLManobrasDireta}`);
             
-            paginaManobras = await context.newPage();
             try {
               await paginaManobras.goto(URLManobrasDireta, { waitUntil: 'load', timeout: 30000 });
-              console.log('✅ Nova aba aberta com sucesso!');
-            } catch (e) {
-              console.log(`⚠️ Nova aba também falhou: ${e.message.substring(0, 60)}...`);
-              
-              // Tentativa 4: tentar com a URL original
-              console.log('🔄 Tentativa 4: tentando com URL original...');
-              try {
-                await paginaManobras.goto(URLManobras, { waitUntil: 'load', timeout: 30000 });
-                console.log('✅ Tentativa 4 funcionou!');
-              } catch (e2) {
-                console.log(`❌ Todas as tentativas falharam.`);
-                throw new Error('Não foi possível acessar a página de Manobras.');
-              }
+              console.log('✅ Abriu sem faces-redirect!');
+            } catch (e2) {
+              throw new Error('Não foi possível abrir a página de Manobras.');
             }
           }
           
           // Aguarda estabilização
-          console.log('⏳ Aguardando estabilização...');
+          console.log('⏳ Aguardando estabilização da página de Manobras...');
           try {
             await paginaManobras.waitForLoadState('networkidle', { timeout: 20000 });
           } catch {
-            console.log('⚠️ networkidle não atingido.');
+            console.log('⚠️ networkidle não atingido, prosseguindo...');
           }
           
           await paginaManobras.waitForTimeout(3000);
-          console.log(`🌐 URL final: ${paginaManobras.url()}`);
-          console.log('🚀 SUCESSO! Tela de Manobras aberta.');
+          
+          // Confirma que ambas as abas estão abertas
+          const abasAtivas = context.pages();
+          console.log(`\n📊 Abas ativas no navegador: ${abasAtivas.length}`);
+          abasAtivas.forEach((aba, i) => {
+            try {
+              const url = aba.url();
+              const tipo = url.includes('layout.xhtml') ? '🔒 LAYOUT (mantida)' : 
+                          url.includes('ManeuverFttxResource') ? '🚀 MANOBRAS' : '📄 OUTRA';
+              console.log(`   [${i}] ${tipo}: ${url.substring(0, 80)}...`);
+            } catch {
+              console.log(`   [${i}] (fechada)`);
+            }
+          });
+          
+          console.log(`\n🌐 URL da aba de Manobras: ${paginaManobras.url()}`);
+          console.log('🚀 SUCESSO! Layout mantido aberto + Manobras em nova aba.');
           
         } else if (urlAtual.includes('ManeuverFttxResource')) {
           console.log('🚀 Já está em Manobras!');
