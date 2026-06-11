@@ -1,4 +1,4 @@
-// cpqd.js - Robô CPQD/Telefônica com Menu Interativo
+// cpqd.js - Robô CPQD/Telefônica com Menu Interativo (CORRIGIDO)
 const { chromium } = require('playwright');
 const readline = require('readline');
 
@@ -8,7 +8,8 @@ const readline = require('readline');
 
 const criarInterface = () => readline.createInterface({
   input: process.stdin,
-  output: process.stdout
+  output: process.stdout,
+  terminal: true // Garante comportamento correto do terminal
 });
 
 const perguntar = (rl, mensagem) => new Promise(resolve => {
@@ -30,12 +31,17 @@ const aguardarEnter = (rl, mensagem) => new Promise(resolve => {
   rl.question(mensagem, () => resolve());
 });
 
+// Limpa a tela de forma segura
+const limparTela = () => {
+  process.stdout.write('\x1Bc'); // Reset do terminal (funciona melhor que console.clear)
+};
+
 // ============================================================================
 // 📋 MENU PRINCIPAL
 // ============================================================================
 
 const mostrarMenu = async (rl) => {
-  console.clear();
+  limparTela();
   console.log('╔══════════════════════════════════════════════════════════╗');
   console.log('║     🤖 ROBÔ CPQD - TELEFÔNICA / FACILITIES             ║');
   console.log('╠══════════════════════════════════════════════════════════╣');
@@ -116,7 +122,6 @@ const abrirSiteCorrente = async (context, page, rl) => {
   await campoFiltro.fill(sigla);
   console.log(`✅ Filtro: ${sigla}`);
   
-  // Monitor de nova aba
   const promessaNovaAba = context.waitForEvent('page', { timeout: 60000 });
   
   console.log(`📂 Selecionando banco _${sigla}...`);
@@ -182,7 +187,7 @@ const modoInspecao = async (page, rl) => {
 };
 
 // ============================================================================
-// 🚀 OPÇÃO 1: Fluxo Completo
+// 🚀 OPÇÃO 1: Fluxo Completo (CORRIGIDO)
 // ============================================================================
 
 const fluxoCompleto = async (context, page, rl) => {
@@ -212,97 +217,8 @@ const fluxoCompleto = async (context, page, rl) => {
   await campoFiltro.fill(sigla);
   console.log(`✅ Filtro: ${sigla}`);
   
-  // MONITOR DE ABAS
-  let paginaManobrasFinal = null;
-  
-  context.on('page', async (novaAba) => {
-    console.log('\n✨ Nova aba aberta pelo sistema!');
-    
-    try {
-      await novaAba.waitForURL('**/CurrentSite.xhtml*', { waitUntil: 'load', timeout: 45000 });
-      console.log(`🌐 Site Corrente: ${novaAba.url()}`);
-      
-      await novaAba.locator('#CurrentSiteInsertForm').waitFor({ state: 'visible', timeout: 20000 });
-      
-      const dados = await perguntarDadosBusca(rl);
-      
-      console.log('⚙️ Preenchendo Localidade...');
-      await novaAba.locator('tr:has-text("Localidade") input[type="text"]').first().fill(dados.localidade);
-      
-      console.log('⚙️ Preenchendo Site...');
-      await novaAba.locator('tr:has-text("Site") input[type="text"]').first().fill(dados.site);
-      
-      console.log('🔍 Acionando Lupa...');
-      await novaAba.locator('tr:has-text("Site") button, tr:has-text("Site") a').first().click();
-      await novaAba.waitForTimeout(2000);
-      
-      console.log('🎯 Localizando botão "Definir"...');
-      const botaoDefinir = novaAba.locator('button:has-text("Definir"), input[type="submit"][value="Definir"], .ui-button:has-text("Definir")').first();
-      await botaoDefinir.waitFor({ state: 'visible', timeout: 10000 });
-      await botaoDefinir.focus();
-      await novaAba.keyboard.press('Enter');
-      console.log('✅ Botão Definir acionado.');
-      
-      // AGUARDAR LAYOUT
-      console.log('⏳ Aguardando resposta do sistema...');
-      await novaAba.waitForFunction(() => {
-        return window.location.href.includes('layout.xhtml') || 
-               window.location.href.includes('ManeuverFttxResource.xhtml');
-      }, { timeout: 45000 });
-      
-      const urlAtual = novaAba.url();
-      
-      if (urlAtual.includes('layout.xhtml')) {
-        console.log('📌 LAYOUT BASE detectado.');
-        console.log('🔒 Mantendo aba do layout aberta (sessão do CID).');
-        
-        const match = urlAtual.match(/cid=(\d+)/);
-        if (!match || !match[1]) {
-          console.log('⚠️ CID não encontrado na URL.');
-          return;
-        }
-        
-        const cid = match[1].trim();
-        console.log(`🆔 CID: ${cid}`);
-        
-        const URLManobras = `http://sagreosp.telefonica.br/cpqd/oper/ManeuverFttxResource/ManeuverFttxResource.xhtml?faces-redirect=true&cid=${cid}`;
-        console.log('🚀 Abrindo Manobras em NOVA ABA...');
-        
-        paginaManobrasFinal = await context.newPage();
-        
-        try {
-          await paginaManobrasFinal.goto(URLManobras, { waitUntil: 'load', timeout: 30000 });
-        } catch (e) {
-          const URLDireta = URLManobras.replace('faces-redirect=true&', '');
-          console.log('🔄 Tentando sem faces-redirect...');
-          await paginaManobrasFinal.goto(URLDireta, { waitUntil: 'load', timeout: 30000 });
-        }
-        
-        await paginaManobrasFinal.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
-        await paginaManobrasFinal.waitForTimeout(3000);
-        
-        console.log('\n📊 ABAS ATIVAS:');
-        context.pages().forEach((aba, i) => {
-          try {
-            const url = aba.url();
-            const tipo = url.includes('layout.xhtml') ? '🔒 LAYOUT' : 
-                        url.includes('ManeuverFttxResource') ? '🚀 MANOBRAS' : 
-                        url.includes('CurrentSite') ? '📍 SITE CORRENTE' : '📄 OUTRA';
-            console.log(`   [${i}] ${tipo}: ${url.substring(0, 70)}...`);
-          } catch {}
-        });
-        
-        console.log('\n🎉 FLUXO COMPLETO EXECUTADO COM SUCESSO!');
-        
-      } else if (urlAtual.includes('ManeuverFttxResource')) {
-        console.log('🚀 Sistema redirecionou direto para Manobras!');
-        paginaManobrasFinal = novaAba;
-      }
-      
-    } catch (erroAba) {
-      console.error('❌ Erro no fluxo:', erroAba.message);
-    }
-  });
+  // ✅ CORREÇÃO: Usar Promise para aguardar a nova aba de forma controlada
+  const promessaNovaAba = context.waitForEvent('page', { timeout: 60000 });
   
   // BANCO
   console.log(`\n📂 Selecionando banco _${sigla}...`);
@@ -311,19 +227,103 @@ const fluxoCompleto = async (context, page, rl) => {
   await opcaoBanco.click();
   console.log('✅ Banco selecionado!');
   
-  // Aguarda o monitor de abas processar
-  console.log('⏳ Aguardando conclusão do fluxo...');
-  await page.waitForTimeout(60000);
+  console.log('⏳ Aguardando abertura do Site Corrente...');
+  
+  try {
+    const novaAba = await promessaNovaAba;
+    await novaAba.waitForURL('**/CurrentSite.xhtml*', { waitUntil: 'load', timeout: 45000 });
+    console.log(`🌐 Site Corrente: ${novaAba.url()}`);
+    
+    await novaAba.locator('#CurrentSiteInsertForm').waitFor({ state: 'visible', timeout: 20000 });
+    
+    const dados = await perguntarDadosBusca(rl);
+    
+    console.log('⚙️ Preenchendo Localidade...');
+    await novaAba.locator('tr:has-text("Localidade") input[type="text"]').first().fill(dados.localidade);
+    
+    console.log('⚙️ Preenchendo Site...');
+    await novaAba.locator('tr:has-text("Site") input[type="text"]').first().fill(dados.site);
+    
+    console.log('🔍 Acionando Lupa...');
+    await novaAba.locator('tr:has-text("Site") button, tr:has-text("Site") a').first().click();
+    await novaAba.waitForTimeout(2000);
+    
+    console.log('🎯 Localizando botão "Definir"...');
+    const botaoDefinir = novaAba.locator('button:has-text("Definir"), input[type="submit"][value="Definir"], .ui-button:has-text("Definir")').first();
+    await botaoDefinir.waitFor({ state: 'visible', timeout: 10000 });
+    await botaoDefinir.focus();
+    await novaAba.keyboard.press('Enter');
+    console.log('✅ Botão Definir acionado.');
+    
+    // AGUARDAR LAYOUT
+    console.log('⏳ Aguardando resposta do sistema...');
+    await novaAba.waitForFunction(() => {
+      return window.location.href.includes('layout.xhtml') || 
+             window.location.href.includes('ManeuverFttxResource.xhtml');
+    }, { timeout: 45000 });
+    
+    const urlAtual = novaAba.url();
+    
+    if (urlAtual.includes('layout.xhtml')) {
+      console.log('📌 LAYOUT BASE detectado.');
+      console.log('🔒 Mantendo aba do layout aberta (sessão do CID).');
+      
+      const match = urlAtual.match(/cid=(\d+)/);
+      if (!match || !match[1]) {
+        console.log('⚠️ CID não encontrado na URL.');
+        return;
+      }
+      
+      const cid = match[1].trim();
+      console.log(`🆔 CID: ${cid}`);
+      
+      const URLManobras = `http://sagreosp.telefonica.br/cpqd/oper/ManeuverFttxResource/ManeuverFttxResource.xhtml?faces-redirect=true&cid=${cid}`;
+      console.log('🚀 Abrindo Manobras em NOVA ABA...');
+      
+      const paginaManobrasFinal = await context.newPage();
+      
+      try {
+        await paginaManobrasFinal.goto(URLManobras, { waitUntil: 'load', timeout: 30000 });
+      } catch (e) {
+        const URLDireta = URLManobras.replace('faces-redirect=true&', '');
+        console.log('🔄 Tentando sem faces-redirect...');
+        await paginaManobrasFinal.goto(URLDireta, { waitUntil: 'load', timeout: 30000 });
+      }
+      
+      await paginaManobrasFinal.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
+      await paginaManobrasFinal.waitForTimeout(3000);
+      
+      console.log('\n📊 ABAS ATIVAS:');
+      context.pages().forEach((aba, i) => {
+        try {
+          const url = aba.url();
+          const tipo = url.includes('layout.xhtml') ? '🔒 LAYOUT' : 
+                      url.includes('ManeuverFttxResource') ? '🚀 MANOBRAS' : 
+                      url.includes('CurrentSite') ? '📍 SITE CORRENTE' : '📄 OUTRA';
+          console.log(`   [${i}] ${tipo}: ${url.substring(0, 70)}...`);
+        } catch {}
+      });
+      
+      console.log('\n🎉 FLUXO COMPLETO EXECUTADO COM SUCESSO!');
+      
+    } else if (urlAtual.includes('ManeuverFttxResource')) {
+      console.log('🚀 Sistema redirecionou direto para Manobras!');
+      console.log('\n🎉 FLUXO COMPLETO EXECUTADO COM SUCESSO!');
+    }
+    
+  } catch (erro) {
+    console.error('❌ Erro no fluxo:', erro.message);
+  }
   
   await aguardarEnter(rl, '\n↩️ Pressione [ENTER] para voltar ao menu...');
 };
 
 // ============================================================================
-// 🎯 LOOP PRINCIPAL
+// 🎯 LOOP PRINCIPAL (CORRIGIDO)
 // ============================================================================
 
 (async () => {
-  console.clear();
+  limparTela();
   console.log('╔══════════════════════════════════════════════════════════╗');
   console.log('║   🤖 ROBÔ CPQD - TELEFÔNICA / FACILITIES MANAGEMENT    ║');
   console.log('║   📅 ' + new Date().toLocaleString('pt-BR').padEnd(48) + '║');
@@ -336,13 +336,11 @@ const fluxoCompleto = async (context, page, rl) => {
   let page = null;
   
   try {
-    // Inicializa navegador uma única vez
     const nav = await iniciarNavegador();
     browser = nav.browser;
     context = nav.context;
     page = nav.page;
     
-    // Faz login inicial
     await fazerLogin(page);
     
     while (ativo) {
@@ -351,31 +349,31 @@ const fluxoCompleto = async (context, page, rl) => {
         
         switch (opcao) {
           case '1':
-            console.clear();
+            limparTela();
             console.log('▶️ [1] Fluxo Completo');
             await fluxoCompleto(context, page, rl);
             break;
             
           case '2':
-            console.clear();
+            limparTela();
             console.log('▶️ [2] Abrir Facilities');
             await abrirFacilities(page, rl);
             break;
             
           case '3':
-            console.clear();
+            limparTela();
             console.log('▶️ [3] Abrir Site Corrente');
             await abrirSiteCorrente(context, page, rl);
             break;
             
           case '4':
-            console.clear();
+            limparTela();
             console.log('▶️ [4] Abrir Manobras por CID');
             await abrirManobrasPorCID(context, rl);
             break;
             
           case '5':
-            console.clear();
+            limparTela();
             console.log('▶️ [5] Modo Inspeção');
             await modoInspecao(page, rl);
             break;
