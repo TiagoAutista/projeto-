@@ -1,56 +1,48 @@
-// index.js - Menu Principal Unificado
-const { criarInterface, perguntar } = require('./utils/terminal');
-const { exibirCabecalho, getStatusFormatado } = require('./utils/visual');
-const { menuCPQD, getStatus: statusCPQD } = require('./cpqd');
-const { menuGOI, getStatus: statusGOI } = require('./goi');
+// utils/visual.js - Funções de formatação visual com Chalk
 const chalk = require('chalk');
+const { limparTela } = require('./terminal');
 
-(async () => {
-  const rl = criarInterface();
-  let ativo = true;
+const exibirCabecalho = (titulo) => {
+  limparTela();
+  const borda = chalk.cyan.bold;
+  const texto = chalk.white.bold;
+  const data = chalk.gray;
   
-  while (ativo) {
-    exibirCabecalho('🤖 CENTRAL DE ROBÔS - TELEFÔNICA');
-    
-    const cpqd = statusCPQD();
-    const goi = statusGOI();
-    
-    console.log(chalk.cyan.bold('╔══════════════════════════════════════════════════════════╗'));
-    console.log(chalk.cyan.bold('║') + chalk.white.bold('  STATUS DOS SISTEMAS').padEnd(58) + chalk.cyan.bold('║'));
-    console.log(chalk.cyan.bold('╠══════════════════════════════════════════════════════════╣'));
-    console.log(chalk.cyan.bold('║') + '  ' + getStatusFormatado('🤖 CPQD', cpqd.navegadorAberto, cpqd.logado).padEnd(56) + chalk.cyan.bold('║'));
-    console.log(chalk.cyan.bold('║') + '  ' + getStatusFormatado('🤖 GOI ', goi.navegadorAberto, goi.logado).padEnd(56) + chalk.cyan.bold('║'));
-    console.log(chalk.cyan.bold('╠══════════════════════════════════════════════════════════╣'));
-    console.log(chalk.cyan.bold('║') + chalk.yellow.bold('  [1] 🤖 Robô CPQD (Facilities / Manobras)').padEnd(58) + chalk.cyan.bold('║'));
-    console.log(chalk.cyan.bold('║') + chalk.yellow.bold('  [2] 🤖 Robô GOI Vivo (Centro de Controle)').padEnd(58) + chalk.cyan.bold('║'));
-    console.log(chalk.cyan.bold('║') + '  ' + chalk.gray('─────────────────────────────────────────────────────').padEnd(58) + chalk.cyan.bold('║'));
-    console.log(chalk.cyan.bold('║') + chalk.red.bold('  [0] 🚪 Sair e Fechar Tudo').padEnd(58) + chalk.cyan.bold('║'));
-    console.log(chalk.cyan.bold('╚══════════════════════════════════════════════════════════╝'));
-    
-    const opcao = await perguntar(rl, chalk.cyan.bold('\n👉 Escolha uma opção: '));
-    
-    switch (opcao) {
-      case '1': 
-        await menuCPQD(rl); 
-        break;
-      case '2': 
-        await menuGOI(rl); 
-        break;
-      case '0':
-        console.log(chalk.yellow('\n👋 Encerrando e limpando recursos...'));
-        ativo = false;
-        break;
-      default:
-        console.log(chalk.red.bold('\n⚠️ Opção inválida! Tente novamente.'));
-        await new Promise(r => setTimeout(r, 1500));
-    }
+  console.log(borda('╔══════════════════════════════════════════════════════════╗'));
+  console.log(borda('║') + '   ' + texto(titulo.padEnd(54)) + borda('║'));
+  console.log(borda('║') + '   📅 ' + data(new Date().toLocaleString('pt-BR').padEnd(48)) + borda('║'));
+  console.log(borda('╚══════════════════════════════════════════════════════════╝\n'));
+};
+
+const desenharBox = (titulo, linhas) => {
+  const largura = 60;
+  const borda = chalk.cyan.bold;
+  const destaque = chalk.yellow.bold;
+  
+  console.log(borda('╔' + '═'.repeat(largura) + '╗'));
+  console.log(borda('║') + destaque(' ' + titulo.padEnd(largura - 1) + '║'));
+  console.log(borda('╠' + '═'.repeat(largura) + '╣'));
+  
+  linhas.forEach(linha => {
+    // Garante que o texto não ultrapasse a borda, mesmo com cores
+    const textoLimpo = linha.replace(/\x1b\[[0-9;]*m/g, ''); // Remove códigos de cor para calcular tamanho
+    const espacos = ' '.repeat(largura - 2 - textoLimpo.length);
+    console.log(borda('║') + ' ' + linha + espacos + borda('║'));
+  });
+  
+  console.log(borda('╚' + '═'.repeat(largura) + '╝'));
+};
+
+const getStatusFormatado = (label, statusNavegador, statusLogin) => {
+  let indicador = chalk.red.bold('🔴 FECHADO');
+  if (statusNavegador) {
+    indicador = statusLogin ? chalk.green.bold('🟢 LOGADO') : chalk.yellow.bold('🟡 ABERTO (Sem Login)');
   }
-  
-  rl.close();
-  console.log(chalk.green.bold('✅ Programa finalizado com sucesso!\n'));
-  process.exit(0);
-})();
+  return `${chalk.white.bold(label.padEnd(8))}: ${indicador}`;
+};
 
-process.on('unhandledRejection', (erro) => {
-  console.error(chalk.red.bold('\n❌ Erro assíncrono:'), erro.message);
-});
+module.exports = {
+  desenharBox,
+  exibirCabecalho,
+  getStatusFormatado
+};
