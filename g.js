@@ -1,59 +1,48 @@
-// index.js - Menu Principal Unificado
-const { criarInterface, perguntar, exibirCabecalho } = require('./utils');
-const { menuCPQD, getStatus: statusCPQD } = require('./cpqd');
-const { menuGOI, getStatus: statusGOI } = require('./goi');
+// utils/visual.js - Funções de formatação visual com Chalk
+const chalk = require('chalk');
+const { limparTela } = require('./terminal');
 
-(async () => {
-  const rl = criarInterface();
-  let ativo = true;
+const exibirCabecalho = (titulo) => {
+  limparTela();
+  const borda = chalk.cyan.bold;
+  const texto = chalk.white.bold;
+  const data = chalk.gray;
   
-  while (ativo) {
-    exibirCabecalho('🤖 CENTRAL DE ROBÔS - TELEFÔNICA');
-    
-    const cpqd = statusCPQD();
-    const goi = statusGOI();
-    
-    console.log('╔══════════════════════════════════════════════════════════╗');
-    console.log('║  STATUS DOS SISTEMAS                                   ║');
-    console.log('╠══════════════════════════════════════════════════════════╣');
-    console.log(`║  🤖 CPQD: ${cpqd.navegadorAberto ? (cpqd.logado ? '🟢 LOGADO' : '🟡 ABERTO') : '🔴 FECHADO'}                                    ║`);
-    console.log(`║  🤖 GOI:  ${goi.navegadorAberto ? (goi.logado ? '🟢 LOGADO' : '🟡 ABERTO') : '🔴 FECHADO'}                                    ║`);
-    console.log('╠══════════════════════════════════════════════════════════╣');
-    console.log('║  [1] 🤖 Robô CPQD (Facilities/Manobras)                ║');
-    console.log('║  [2] 🤖 Robô GOI Vivo (Centro de Controle)             ║');
-    console.log('║  ───────────────────────────────────────────────────── ║');
-    console.log('║  [0] 🚪 Sair e Fechar Tudo                             ║');
-    console.log('╚══════════════════════════════════════════════════════════╝');
-    
-    const opcao = await perguntar(rl, '\n👉 Escolha uma opção: ');
-    
-    switch (opcao) {
-      case '1': await menuCPQD(rl); break;
-      case '2': await menuGOI(rl); break;
-      case '0':
-        console.log('\n👋 Encerrando e limpando recursos...');
-        // Garante que ambos os navegadores sejam fechados ao sair
-        const { getStatus: getCPQD } = require('./cpqd');
-        const { getStatus: getGOI } = require('./goi');
-        
-        if (getCPQD().navegadorAberto) {
-            const { fecharNavegador } = require('./cpqd'); // Hack para acessar a função interna se necessário, ou apenas force o close
-            // Como não exportamos fecharNavegador, vamos forçar via require direto ou adicionar ao export. 
-            // Para simplificar, o Node.js garbage collector cuida disso, mas o ideal é exportar.
-        }
-        ativo = false;
-        break;
-      default:
-        console.log('⚠️ Opção inválida!');
-        await new Promise(r => setTimeout(r, 1000));
-    }
+  console.log(borda('╔══════════════════════════════════════════════════════════╗'));
+  console.log(borda('║') + '   ' + texto(titulo.padEnd(54)) + borda('║'));
+  console.log(borda('║') + '   📅 ' + data(new Date().toLocaleString('pt-BR').padEnd(48)) + borda('║'));
+  console.log(borda('╚══════════════════════════════════════════════════════════╝\n'));
+};
+
+const desenharBox = (titulo, linhas) => {
+  const largura = 60;
+  const borda = chalk.cyan.bold;
+  const destaque = chalk.yellow.bold;
+  
+  console.log(borda('╔' + '═'.repeat(largura) + '╗'));
+  console.log(borda('║') + destaque(' ' + titulo.padEnd(largura - 1) + '║'));
+  console.log(borda('╠' + '═'.repeat(largura) + '╣'));
+  
+  linhas.forEach(linha => {
+    // Garante que o texto não ultrapasse a borda, mesmo com cores
+    const textoLimpo = linha.replace(/\x1b\[[0-9;]*m/g, ''); // Remove códigos de cor para calcular tamanho
+    const espacos = ' '.repeat(largura - 2 - textoLimpo.length);
+    console.log(borda('║') + ' ' + linha + espacos + borda('║'));
+  });
+  
+  console.log(borda('╚' + '═'.repeat(largura) + '╝'));
+};
+
+const getStatusFormatado = (label, statusNavegador, statusLogin) => {
+  let indicador = chalk.red.bold('🔴 FECHADO');
+  if (statusNavegador) {
+    indicador = statusLogin ? chalk.green.bold('🟢 LOGADO') : chalk.yellow.bold('🟡 ABERTO (Sem Login)');
   }
-  
-  rl.close();
-  console.log('✅ Programa finalizado com sucesso!');
-  process.exit(0);
-})();
+  return `${chalk.white.bold(label.padEnd(8))}: ${indicador}`;
+};
 
-process.on('unhandledRejection', (erro) => {
-  console.error('\n❌ Erro assíncrono:', erro.message);
-});
+module.exports = {
+  desenharBox,
+  exibirCabecalho,
+  getStatusFormatado
+};
