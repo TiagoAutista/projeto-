@@ -1,72 +1,227 @@
-# =====================================================
-# 🌐 CONFIGURAÇÃO DE CONEXÃO DO NAVEGADOR
-# =====================================================
+// src/lib/wfm.js - [WFM] Login no sistema GVT/Vivo - Versão Simplificada
+// ============================================================================
+const { chromium } = require('playwright');
 
-# Modo de conexão: 'connect' (Chrome existente) ou 'launch' (novo Chrome)
-# Recomendado: 'connect' para testes, 'launch' para produção agendada
-BROWSER_MODE=connect
+/**
+ * 🔐 FUNÇÃO: Realiza login no sistema WFM
+ * @param {object} page - Página do Playwright
+ * @param {object} config - Configurações do sistema
+ * @returns {boolean} true se login bem-sucedido, false caso contrário
+ */
+async function loginWFM(page, config) {
+  const cfg = config?.wfm;
+  
+  if (!cfg) {
+    console.error('❌ Configuração WFM não fornecida.');
+    return false;
+  }
+  
+  if (!cfg.urlBase || !cfg.urlBase.startsWith('http')) {
+    console.error('❌ WFM_URL_BASE inválida.');
+    return false;
+  }
+  
+  const usuario = cfg.usuario || process.env.WFM_USUARIO;
+  const senha = cfg.senha || process.env.WFM_SENHA;
+  
+  if (!usuario || !senha) {
+    console.error('❌ Credenciais WFM não configuradas.');
+    console.error('💡 Adicione no .env: WFM_USUARIO e WFM_SENHA');
+    return false;
+  }
+  
+  console.log(`\n🔐 [WFM] Iniciando login...`);
+  console.log(`   👤 Usuário: ${usuario}`);
+  
+  try {
+    // 1. Navegar para o WFM
+    const timeoutNavegacao = config?.timeouts?.navegacao || 30000;
+    console.log(`   🌐 Navegando: ${cfg.urlBase}`);
+    
+    await page.goto(cfg.urlBase, { 
+      waitUntil: 'domcontentloaded', 
+      timeout: timeoutNavegacao
+    });
+    
+    // 2. Verificar se já está logado
+    const currentUrl = page.url().toLowerCase();
+    if (!currentUrl.includes('login') && !currentUrl.includes('autenticacao')) {
+      console.log('✅ Sessão já ativa. Login não necessário.');
+      return true;
+    }
+    
+    // 3. Aguardar formulário de login
+    const timeoutElemento = config?.timeouts?.elemento || 15000;
+    console.log('   ⏳ Aguardando formulário de login...');
+    
+    // Seletores flexíveis para campos de login
+    const seletorUsuario = [
+      'input[id*="usuario"]',
+      'input[id*="login"]',
+      'input[name*="usuario"]',
+      '#usuario',
+      'input[type="text"]:first-of-type'
+    ];
+    
+    const seletorSenha = [
+      'input[id*="senha"]',
+      'input[id*="password"]',
+      'input[name*="senha"]',
+      '#senha',
+      'input[type="password"]'
+    ];
+    
+    const seletorBotao = [
+      'button[id*="entrar"]',
+      'button[id*="login"]',
+      'button[type="submit"]',
+      'button:has-text("Entrar")',
+      'button:has-text("Login")'
+    ];
+    
+    // Encontrar campo de usuário
+    let campoUsuario = null;
+    for (const seletor of seletorUsuario) {
+      try {
+        campoUsuario = await page.waitForSelector(seletor, { 
+          timeout: 5000,
+          state: 'visible'
+        });
+        console.log(`   ✓ Campo usuário: ${seletor}`);
+        break;
+      } catch (e) {
+        continue;
+      }
+    }
+    
+    if (!campoUsuario) {
+      throw new Error('Campo de usuário não encontrado.');
+    }
+    
+    // Encontrar campo de senha
+    let campoSenha = null;
+    for (const seletor of seletorSenha) {
+      try {
+        campoSenha = await page.waitForSelector(seletor, { 
+          timeout: 5000,
+          state: 'visible'
+        });
+        console.log(`   ✓ Campo senha: ${seletor}`);
+        break;
+      } catch (e) {
+        continue;
+      }
+    }
+    
+    if (!campoSenha) {
+      throw new Error('Campo de senha não encontrado.');
+    }
+    
+    // 4. Preencher credenciais
+    console.log('   ✍️  Preenchendo credenciais...');
+    await campoUsuario.fill(usuario);
+    await campoSenha.fill(senha);
+    await page.waitForTimeout(500);
+    
+    // 5. Clicar no botão de login
+    let botaoLogin = null;
+    for (const seletor of seletorBotao) {
+      try {
+        botaoLogin = await page.waitForSelector(seletor, { 
+          timeout: 3000,
+          state: 'visible'
+        });
+        console.log(`   ✓ Botão login: ${seletor}`);
+        break;
+      } catch (e) {
+        continue;
+      }
+    }
+    
+    if (botaoLogin) {
+      console.log('   🖱️  Clicando em entrar...');
+      await botaoLogin.click();
+    } else {
+      console.log('   ⚠️  Botão não encontrado, pressionando Enter...');
+      await campoSenha.press('Enter');
+    }
+    
+    // 6. Aguardar conclusão do login
+    console.log('   ⏳ Aguardando login...');
+    await page.waitForTimeout(3000);
+    
+    // Verificar se login foi bem-sucedido
+    const urlAposLogin = page.url().toLowerCase();
+    if (urlAposLogin.includes('login') || urlAposLogin.includes('autenticacao')) {
+      throw new Error('Login falhou. Verifique suas credenciais.');
+    }
+    
+    console.log('✅ Login realizado com sucesso!');
+    console.log(`   📍 URL: ${page.url()}`);
+    return true;
+    
+  } catch (err) {
+    console.error(`❌ Erro no login: ${err.message}`);
+    return false;
+  }
+}
 
-# Porta do Chrome com debug remoto (usada apenas se BROWSER_MODE=connect)
-BROWSER_DEBUG_PORT=9222
+/**
+ * 🔍 FUNÇÃO: Abre WFM para inspeção manual
+ */
+async function abrirWFM(page, config) {
+  const cfg = config?.wfm;
+  
+  if (!cfg || !cfg.urlBase) {
+    console.error('❌ URL do WFM não configurada.');
+    return;
+  }
+  
+  console.log(`\n🔍 Abrindo WFM: ${cfg.urlBase}`);
+  
+  try {
+    const timeoutNavegacao = config?.timeouts?.navegacao || 30000;
+    
+    await page.goto(cfg.urlBase, { 
+      waitUntil: 'domcontentloaded', 
+      timeout: timeoutNavegacao 
+    });
+    
+    console.log('✅ Página carregada.');
+    
+  } catch (err) {
+    console.error(`❌ Falha ao abrir: ${err.message}`);
+  }
+}
 
-# Caminho do Chrome (opcional, usado apenas se BROWSER_MODE=launch)
-# CHROME_PATH=C:\Program Files\Google\Chrome\Application\chrome.exe
+// 📦 EXPORTAÇÕES
+module.exports = { 
+  loginWFM,
+  abrirWFM
+};
 
-# =====================================================
-# 📡 WFM - Work Order Management (GVT/Vivo)
-# =====================================================
-WFM_URL_BASE=http://appwfm.gvt.net.br/wfm-search
-WFM_URL_CHECK=/detalhesWorkOrder.xhtml
-WFM_INPUT=./src/config/data/wfm/input/entrada.csv
-WFM_OUTPUT=./src/config/data/wfm/output/saida.csv
-COOKIES_WFM=./src/config/data/state/wfm-cookies.json
-
-# =====================================================
-# 🛰️ GPS - Sistema de Tipificação (Redecorp)
-# =====================================================
-GPS_URL_BASE=http://gps.redecorp.br/gps/atendimento
-GPS_URL_CHECK=/perfil.jsf
-GPS_SEARCH_PATH=/index.jsf
-COOKIES_GPS=./src/config/data/state/gps-cookies.json
-GPS_UNIDADE_INPUT=./src/config/data/gps/input/unidade_entrada.csv
-GPS_UNIDADE_OUTPUT=./src/config/data/gps/output/unidade_saida.csv
-GPS_GRUPO_INPUT=./src/config/data/gps/input/grupo_entrada.csv
-GPS_GRUPO_OUTPUT=./src/config/data/gps/output/grupo_saida.csv
-GPS_SELETOR_LISTA=.ui-selectlistbox-item
-GPS_SELETOR_LABEL=#formPainelSelecaoTipificacao\\:outputPerguntaTipo
-
-# =====================================================
-# ⏱️ Timeouts e Delays
-# =====================================================
-TIMEOUT_NAVEGACAO=15000
-TIMEOUT_ELEMENTO=5000
-TIMEOUT_CLIQUE=5000
-DELAY_ENTRE_ACOES=500
-DELAY_ENTRE_DOCUMENTOS=200
-
-# =============================================================================
-# 🗄️ Siebel CRM - Configurações
-# =============================================================================
-
-SIEBEL_URL_BASE=http://gpscrm.gvt.com.br/gps/crm/atendimento/index.jsf
-SIEBEL_URL_CHECK=?documento=
-
-SIEBEL_UNIDADE_INPUT=./src/config/data/siebel/input/unidade_entrada.csv
-SIEBEL_UNIDADE_OUTPUT=./src/config/data/siebel/output/unidade_saida.csv
-SIEBEL_GRUPO_INPUT=./src/config/data/siebel/input/grupo_entrada.csv
-SIEBEL_GRUPO_OUTPUT=./src/config/data/siebel/output/grupo_saida.csv
-
-# Performance
-SIEBEL_MODO_RAPIDO=true
-
-# Debug/Pausas
-SIEBEL_PAUSAR_ANTES_PROCESSAR=true
-SIEBEL_PAUSAR_ANTES_TIPIFICAR=true
-SIEBEL_PAUSAR_EM_ERRO=true
-SIEBEL_LOG_PAUSAS=false
-
-# 🚀 CONTROLE DE FLUXO DO ROBÔ GPS
-GPS_PAUSAR_ANTES_PROCESSAR=false
-GPS_PAUSAR_ANTES_TIPIFICAR=true
-GPS_PAUSAR_EM_ERRO=true
-GPS_LOG_PAUSAS=false
+// 💡 TESTE AUTÔNOMO
+if (require.main === module) {
+  (async () => {
+    console.log('🚀 Teste de Login WFM\n');
+    
+    require('dotenv').config();
+    const config = require('../config/config.js');
+    
+    const browser = await chromium.launch({ headless: false });
+    const page = await browser.newPage();
+    
+    try {
+      const sucesso = await loginWFM(page, config);
+      
+      if (sucesso) {
+        console.log('\n🎉 Login bem-sucedido! Aguardando 30s...');
+        await page.waitForTimeout(30000);
+      }
+    } catch (err) {
+      console.error('❌ Erro:', err);
+    } finally {
+      await browser.close();
+    }
+  })();
+}
