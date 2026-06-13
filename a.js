@@ -1,60 +1,63 @@
-//pages/wfm/wfm-work-order.page.ts
+//utils/wfm/cpf-validator.ts
 
-import { Page, Locator, expect } from '@playwright/test';
-import { WfmDataExtractor, WfmCamposConfig, WfmDadosExtraidos } from './components/wfm-data-extractor.component';
-
-export class WfmWorkOrderPage {
-  readonly page: Page;
-  
-  // Locators com auto-retry nativo do Playwright
-  readonly contentArea: Locator;
-  readonly loadingIndicator: Locator;
-  readonly loginForm: Locator;
-  readonly errorMessage: Locator;
-
-  constructor(page: Page) {
-    this.page = page;
-    this.contentArea = page.locator('#content, #main, .main').first();
-    this.loadingIndicator = page.locator('.ui-blockui, .loading, [aria-busy="true"]');
-    this.loginForm = page.locator('form[action*="login"], #loginForm, [id*="login"]').first();
-    this.errorMessage = page.locator('.ui-message-error, .error-message, [role="alert"]').first();
+/**
+ * Validação de CPF usando algoritmo oficial (Módulo 11)
+ * Substitui a lógica inline do código original
+ */
+export class CPFValidator {
+  /**
+   * Remove todos os caracteres não numéricos
+   */
+  static limpar(txt: string): string {
+    return String(txt || '').replace(/\D/g, '');
   }
 
-  async goto(url: string): Promise<void> {
-    await this.page.goto(url, { 
-      waitUntil: 'domcontentloaded', 
-      timeout: 30000 
-    });
-  }
-
-  // ✅ Usa assertions com auto-retry ao invés de waitForSelector
-  async waitForPageLoad(): Promise<void> {
-    await expect(this.contentArea).toBeVisible({ timeout: 15000 });
+  /**
+   * Valida CPF usando algoritmo oficial de Módulo 11
+   */
+  static ehValido(num: string): boolean {
+    const cpf = this.limpar(num);
     
-    // Aguardar loading desaparecer (se existir)
-    await expect(this.loadingIndicator).toBeHidden({ timeout: 5000 }).catch(() => {
-      // Loading pode não existir, continua normalmente
-    });
-  }
-
-  // ✅ Usa assertions ao invés de verificar URL manualmente
-  async isSessionExpired(): Promise<boolean> {
-    try {
-      await expect(this.loginForm).toBeVisible({ timeout: 3000 });
-      return true;
-    } catch {
-      return false;
+    // Verifica se tem 11 dígitos
+    if (cpf.length !== 11) return false;
+    
+    // Verifica se todos os dígitos são iguais (CPF inválido)
+    if (/^(\d)\1{10}$/.test(cpf)) return false;
+    
+    // Validação do primeiro dígito verificador
+    let soma = 0;
+    for (let i = 1; i <= 9; i++) {
+      soma += parseInt(cpf.substring(i - 1, i)) * (11 - i);
     }
+    let resto = (soma * 10) % 11;
+    if (resto === 10 || resto === 11) resto = 0;
+    if (resto !== parseInt(cpf.substring(9, 10))) return false;
+    
+    // Validação do segundo dígito verificador
+    soma = 0;
+    for (let i = 1; i <= 10; i++) {
+      soma += parseInt(cpf.substring(i - 1, i)) * (12 - i);
+    }
+    resto = (soma * 10) % 11;
+    if (resto === 10 || resto === 11) resto = 0;
+    
+    return resto === parseInt(cpf.substring(10, 11));
   }
 
-  async extrairDados(campos: WfmCamposConfig): Promise<WfmDadosExtraidos> {
-    return await WfmDataExtractor.extrair(this.page, campos);
-  }
-
-  // ✅ Assertions com auto-retry do Playwright
-  async validarDadosExtraidos(dados: WfmDadosExtraidos): Promise<void> {
-    await expect(dados.cpf).not.toBe('FALHA_VALIDACAO_WFM');
-    await expect(dados.cpf).not.toBe('N/A');
-    await expect(dados.cpf).toMatch(/^\d{11}$|^\d{3}\.\d{3}\.\d{3}-\d{2}$/);
+  /**
+   * Extrai CPF de um texto usando regex estruturada
+   */
+  static extrairDeTexto(texto: string): string | null {
+    const regexCPF = /(?:\d{3}\.\d{3}\.\d{3}-\d{2})|(?:\b\d{11}\b)/;
+    const match = texto.match(regexCPF);
+    
+    if (match && match[0]) {
+      const cpfLimpo = this.limpar(match[0]);
+      if (this.ehValido(cpfLimpo)) {
+        return match[0].replace(/\s+/g, ' ').trim();
+      }
+    }
+    
+    return null;
   }
 }
