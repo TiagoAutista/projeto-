@@ -1,5 +1,6 @@
-// src/lib/wfm.js - [WFM] Extração de dados de Work Orders (GVT/Vivo)
+// src/lib/wfm.js - [WFM] Extração de dados de Work Orders (GVT/Vivo) - Versão Playwright
 // ============================================================================
+const { chromium } = require('playwright'); // 🔥 Playwright importado
 const { parse } = require('csv-parse/sync');
 const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 const path = require('path');
@@ -102,7 +103,6 @@ async function extrairDadosWFM(page, campos) {
       const regexCPF = /(?:\d{3}\.\d{3}\.\d{3}-\d{2})|(?:\b\d{11}\b)/;
       
       // 🔥 REFACTOR: A busca por Regex agora varre apenas o texto do escopo central (#content/#main)
-      // Bloqueia completamente a captura do CPF do operador logado exibido no topo do portal
       const match = escopoCentral.innerText.match(regexCPF);
       
       if (match && match[0] && ehCpfValido(limparCPF(match[0]))) {
@@ -139,9 +139,8 @@ async function extrairDadosWFM(page, campos) {
     // 2. Pega a primeira linha ou joga vazio se não achar pendências
     const pendenciaMaisRecente = listaPendencias[0] || { data: '', motivo: '' };
 
-    // 📊 CONSTRUÇÃO DO DICTIONARY EXPANDIDO (Mantendo suas 7 chaves intactas no escopo base)
+    // 📊 CONSTRUÇÃO DO DICTIONARY EXPANDIDO
     return {
-      // Seus dados fundamentais originais (Funcionamento normal confirmado)
       cpf: cpf,
       nome: get(cps.nome, 'nome'),
       status: get(cps.status, 'status'),
@@ -150,7 +149,6 @@ async function extrairDadosWFM(page, campos) {
       escritorio: get(cps.escritorio, 'escritorio'),
       area_telefonica: get(cps.area_telefonica, 'area'),
 
-      // 🔥 EXPANSÃO DA FICHA TÉCNICA (Padronizado seguindo a primeira ocorrência do cps)
       protocolo: get(cps.protocolo, 'protocolo'),
       segmento: get(cps.segmento, 'segmento'),
       produto: get(cps.produto, 'produto'),
@@ -162,23 +160,17 @@ async function extrairDadosWFM(page, campos) {
       endereco: get(cps.endereco, 'endereco'),
       olt: get(cps.olt, 'olt'),
       
-      // Dados da pendência capturados com precisão cirúrgica
       data_pendencia: pendenciaMaisRecente.data,
       motivo_pendencia: pendenciaMaisRecente.motivo,
 
-      // 🔥 EXTRAÇÃO EM LOTE DAS GRIDS DE PRODUTOS E ATIVIDADES
       produtos: extrairTabelaFilhos('.ui-datatable:not([id$="issuesTable"])', { id: 0, nome: 1, acao: 2 }),
       atividades: extrairTabelaFilhos('.tabela-atividades', { id: 0, dataCriacao: 1, dataAgendamento: 2, periodo: 3, tecnico: 4, origem: 5, dataEncerramento: 6, status: 7 }),
       historico: extrairTabelaFilhos('.tabela-historico', { status: 0, dataCriacao: 1 })
     };
   }, campos);
-
-
 }
-module.exports = { extrairDadosWFM };
 
-
-// [WFM] Aguarda elemento com timeout e busca paralela (Race) // // Foi atualizado
+// [WFM] Aguarda elemento com timeout e busca paralela (Race)
 async function aguardarElemento(page, seletores, timeout, descricao = 'elemento') {
   const sels = Array.isArray(seletores) ? seletores : [seletores];
 
@@ -186,28 +178,24 @@ async function aguardarElemento(page, seletores, timeout, descricao = 'elemento'
   const promessas = sels.map(sel => 
     page.waitForSelector(sel, { 
       timeout, 
-      visible: true // Garante que o elemento está visível (evita pegar elementos ocultos)
+      state: 'visible' // 🔥 PLAYWRIGHT: Substitui 'visible: true' do Puppeteer por 'state: visible'
     })
     .then(() => sel) // Se encontrar, retorna qual seletor deu certo
   );
 
   try {
-    // Promise.race faz com que o primeiro seletor que aparecer vença a corrida
     const seletorEncontrado = await Promise.race(promessas);
-    // Opcional: console.log(`✓ ${descricao} encontrado via seletor: ${seletorEncontrado}`);
     return true;
   } catch (error) {
-    // Se o tempo acabar e nenhum seletor disparar sucesso, cai aqui
     console.warn(`⚠️  Timeout (${timeout}ms) aguardando ${descricao}. Tentando prosseguir...`);
     return false;
   }
 }
 
-// 🚀 FUNÇÃO PRINCIPAL: Processa lista de Work Orders // Foi atualizado
+// 🚀 FUNÇÃO PRINCIPAL: Processa lista de Work Orders
 async function processarWFM(page, config, rl) {
   const cfg = config?.wfm;
   
-  // Garantia inicial de objeto de configuração existente
   if (!cfg) {
     console.error('❌ Configuração WFM (config.wfm) não foi fornecida.');
     return;
@@ -215,12 +203,8 @@ async function processarWFM(page, config, rl) {
   
   console.log(`\n📡 [${cfg.nome || 'WFM Sem Nome'}]`);
   
-  // ============================================================================
-  // ✅ VALIDAÇÃO DE CONFIGURAÇÃO (FAIL-FAST)
-  // ============================================================================
   if (!cfg.urlBase || !cfg.urlBase.startsWith('http')) {
     console.error('❌ WFM_URL_BASE inválida ou não configurada.');
-    console.error('💡 Verifique o .env: WFM_URL_BASE=http://gvt.net.br');
     return;
   }
   
@@ -239,35 +223,21 @@ async function processarWFM(page, config, rl) {
   console.log(`   📥 Entrada: ${arquivoEntrada}`);
   console.log(`   📤 Saída: ${arquivoSaida}`);
   
-  // ============================================================================
-  // ✅ VERIFICA ARQUIVO DE ENTRADA
-  // ============================================================================
   if (!fs.existsSync(arquivoEntrada)) {
     console.error(`\n❌ Arquivo de entrada não encontrado: ${arquivoEntrada}`);
-    console.log(`\n💡 Crie o arquivo CSV com uma coluna "ID_URL" ou "id_wo".`);
     return;
   }
   
-  // ============================================================================
-  // ✅ CRIA PASTA DE SAÍDA
-  // ============================================================================
   const outputDir = path.dirname(arquivoSaida);
-  console.log(`   📂 Output dir: ${outputDir}`);
-  
   if (!fs.existsSync(outputDir)) {
     try {
       fs.mkdirSync(outputDir, { recursive: true });
-      console.log(`   ✅ Pasta criada: ${outputDir}`);
     } catch (err) {
       console.error(`\n❌ Não foi possível criar a pasta de saída: ${outputDir}`);
-      console.error(`💡 Erro: ${err.message}`);
       return;
     }
   }
   
-  // ============================================================================
-  // ✅ LEITURA DO CSV DE ENTRADA
-  // ============================================================================
   let registros;
   try {
     const conteudoMaturado = fs.readFileSync(arquivoEntrada, 'utf8');
@@ -281,25 +251,17 @@ async function processarWFM(page, config, rl) {
     return;
   }
   
-  if (!registros || !registros.length) { 
-    console.log('⚠️  CSV de entrada vazio.'); 
-    return; 
-  }
+  if (!registros || !registros.length) return; 
   
   console.log(`\n📋 Processando ${registros.length} Work Order(s)...`);
   const resultados = [];
   
-  // ============================================================================
-  // 🔄 LOOP PRINCIPAL: Processa cada Work Order
-  // ============================================================================
   for (let i = 0; i < registros.length; i++) {
     const reg = registros[i];
-    
-    // Extrai ID mapeando os nomes prováveis (removido fallback cego de Object.values)
     const idWo = reg.ID_URL || reg.id_wo || reg.ordem || reg.ID || reg.WO;
     
     if (!idWo || String(idWo).trim() === '') {
-      console.log(`⚠️  [${i+1}] Linha sem ID de Ordem mapeado nos cabeçalhos padrão, pulando...`);
+      console.log(`⚠️  [${i+1}] Linha sem ID de Ordem mapeado, pulando...`);
       continue;
     }
     
@@ -311,40 +273,33 @@ async function processarWFM(page, config, rl) {
       tipo: '', escritorio: '', area_telefonica: '', protocolo: '',
       segmento: '', produto: '', rede_acesso: '', tecnologia_acesso: '',
       cidade: '', estado: '', bairro: '', endereco: '', olt: '', 
-      data_pendencia: '', motivo_pendencia: '', erro: '' // ← Inserido aqui
+      data_pendencia: '', motivo_pendencia: '', erro: '' 
     };
     
     try {
-      // Configuração dinâmica de URL
       const url = cfg.getWoUrl 
         ? cfg.getWoUrl(idWoStr) 
         : `${cfg.urlBase}${cfg.urlCheck || ''}?wo=${idWoStr}`;
       
       console.log(`   🌐 Navegando: ${url}`);
       
-      if (!url || !url.startsWith('http')) {
-        throw new Error(`URL inválida gerada: "${url}"`);
-      }
+      if (!url || !url.startsWith('http')) throw new Error(`URL inválida gerada: "${url}"`);
       
-      // Navegação com tratamento de timeout configurado com fallback seguro (30s)
       const timeoutNavegacao = config?.timeouts?.navegacao || 30000;
       await page.goto(url, { 
         waitUntil: 'domcontentloaded', 
         timeout: timeoutNavegacao
       });
       
-      // Checagem de expiração de sessão
       const currentUrl = page.url().toLowerCase();
       if (currentUrl.includes('login') || currentUrl.includes('autenticacao')) {
-        throw new Error('Sessão expirada. Faça login novamente via opção 4 do menu.');
+        throw new Error('Sessão expirada. Faça login novamente.');
       }
       
-      // Fallback para os tempos de delay e elementos (evita quebra por falta de config)
       const timeoutElemento = config?.timeouts?.elemento || 15000;
       const delayDocumentos = config?.delays?.entreDocumentos || 1000;
       const delayAcoes = config?.delays?.entreAcoes || 2000;
       
-      // Valida se as funções auxiliares globais existem antes de chamar
       if (typeof aguardarElemento === 'function') {
         await aguardarElemento(page, ['body', '#content', '.main'], timeoutElemento, 'página');
       }
@@ -358,7 +313,6 @@ async function processarWFM(page, config, rl) {
         throw new Error("Função 'extrairDadosWFM' não está definida no escopo global.");
       }
       
-      // Logs de sucesso parciais
       console.log(`   ✅ CPF: ${dados.cpf}`);
       if (dados.nome) console.log(`   ✅ Nome: ${dados.nome}`);
       
@@ -369,18 +323,13 @@ async function processarWFM(page, config, rl) {
     
     resultados.push(dados);
     
-    // Delay controlado entre requisições contra Rate Limiting
     if (i < registros.length - 1) {
       const delayAcoes = config?.delays?.entreAcoes || 2000;
       await new Promise(r => setTimeout(r, delayAcoes));
     }
   }
   
-  // ============================================================================
-  // 💾 GERAÇÃO DO CSV DE SAÍDA
-  // ============================================================================
   try {
-    // ✅ REFACTOR: Cabeçalho completo do CSV Writer para suportar a carga máxima da extração
     const csvWriter = createCsvWriter({
       path: arquivoSaida,
       header: [
@@ -402,11 +351,8 @@ async function processarWFM(page, config, rl) {
         { id: 'bairro', title: 'BAIRRO' },
         { id: 'endereco', title: 'ENDERECO' },
         { id: 'olt', title: 'OLT' },
-        
-        // 🔥 AS DUAS NOVAS COLUNAS NO CSV:
         { id: 'data_pendencia', title: 'DATA_PENDENCIA' },
         { id: 'motivo_pendencia', title: 'MOTIVO_PENDENCIA' },
-        
         { id: 'erro', title: 'ERRO' }
       ]
     });
@@ -427,7 +373,6 @@ async function processarWFM(page, config, rl) {
 async function abrirParaInspecaoWFM(page, config) {
   const cfg = config?.wfm;
   
-  // Validação inicial do objeto de configuração
   if (!cfg) {
     console.error('❌ Objeto de configuração do WFM não foi fornecido.');
     return;
@@ -438,11 +383,9 @@ async function abrirParaInspecaoWFM(page, config) {
     return;
   }
   
-  // Montagem segura da URL tratando barras duplicadas ou ausentes
   let url = cfg.urlBase;
   if (cfg.urlCheck) {
     const sufixo = cfg.urlCheck.startsWith('/') ? cfg.urlCheck : `/${cfg.urlCheck}`;
-    // Remove barra no final da urlBase se houver, para evitar duas barras (ex: http://site.com)
     const baseLimpa = cfg.urlBase.endsWith('/') ? cfg.urlBase.slice(0, -1) : cfg.urlBase;
     url = `${baseLimpa}${sufixo}`;
   }
@@ -450,7 +393,6 @@ async function abrirParaInspecaoWFM(page, config) {
   console.log(`\n🔍 Abrindo WFM para inspeção: ${url}`);
   
   try {
-    // Fallback seguro caso o timeout não esteja definido na configuração externa
     const timeoutNavegacao = config?.timeouts?.navegacao || 30000;
     
     await page.goto(url, { 
@@ -460,11 +402,9 @@ async function abrirParaInspecaoWFM(page, config) {
     
     console.log('✅ Página carregada.');
     console.log('💡 Use F12 para inspecionar elementos e testar seletores.');
-    console.log('💡 Console útil: document.querySelector(\'[id*="cpf"]\')?.value');
     
   } catch (err) {
     console.error(`\n❌ Falha ao carregar a página de inspeção: ${err.message}`);
-    console.error('💡 Verifique se você está conectado à VPN da empresa ou se o sistema está online.');
   }
 }
 
@@ -472,10 +412,27 @@ async function abrirParaInspecaoWFM(page, config) {
 module.exports = { 
   processarWFM, 
   abrirParaInspecaoWFM,
-  // Exporta funções auxiliares para testes
   extrairDadosWFM,
-  aguardarElemento
+  aguardarElemento,
+  chromium // Exportado caso você precise criar uma nova instância de browser em outro arquivo
 };
 
-
-TRAsforme esse codigo em um const { chromium } = require('playwright'); sarvar como wfm.js
+// 💡 EXEMPLO DE USO AUTÔNOMO (Só executa se você rodar este arquivo diretamente: node src/lib/wfm.js)
+if (require.main === module) {
+  (async () => {
+    console.log('🚀 Executando modo autônomo com Playwright...');
+    const browser = await chromium.launch({ headless: false }); // Navegador visível
+    const page = await browser.newPage();
+    
+    try {
+      await abrirParaInspecaoWFM(page, {
+        wfm: { urlBase: 'http://gvt.net.br' }, // Substitua pela sua config real
+        timeouts: { navegacao: 30000 }
+      });
+    } catch (err) {
+      console.error(err);
+    } finally {
+      // await browser.close(); // Descomente se quiser fechar o navegador após o teste
+    }
+  })();
+}
