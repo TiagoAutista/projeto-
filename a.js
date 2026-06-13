@@ -1,3 +1,5 @@
+//pages/wfm/wfm-work-order.page.ts
+
 import { Page, Locator, expect } from '@playwright/test';
 import { WfmDataExtractor, WfmCamposConfig, WfmDadosExtraidos } from './components/wfm-data-extractor.component';
 
