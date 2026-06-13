@@ -1,131 +1,214 @@
-//tests/wfm/functional/wfm-csv-processing.spec.ts
+//pages/wfm/wfm-workorder.page.ts
 
-import { test, expect } from '../../../fixtures/wfm/wfm-csv.fixtures';
 
-test.describe('WFM - Processamento em Lote de Work Orders', () => {
-  test('deve processar todas as WOs do CSV e gerar output', async ({ 
-    wfmPage, 
-    wfmInputRecords, 
-    wfmCsvWriter,
-    wfmConfig 
-  }) => {
-    const resultados: any[] = [];
+import { Page, Locator } from '@playwright/test';
+import { CPFValidator } from '../../utils/wfm/cpf-validator';
 
-    await test.step('Processar cada Work Order', async () => {
-      for (let i = 0; i < wfmInputRecords.length; i++) {
-        await test.step(`WO ${i + 1}/${wfmInputRecords.length}`, async () => {
-          const reg = wfmInputRecords[i];
-          const idWo = reg.ID_URL || reg.id_wo || reg.ordem || reg.ID || reg.WO;
-          
-          if (!idWo || String(idWo).trim() === '') {
-            test.info().annotations.push({
-              type: 'warning',
-              description: `Linha ${i + 1} sem ID, pulando...`
-            });
-            return;
-          }
+/**
+ * Page Object Model para Work Orders do WFM
+ * Blindado contra JSF/PrimeFaces com IDs dinâmicos
+ */
+export class WFMWorkOrderPage {
+  readonly page: Page;
+  
+  // Selectores base (adaptáveis)
+  readonly contentContainer: Locator;
+  readonly issuesTable: Locator;
+  
+  constructor(page: Page) {
+    this.page = page;
+    this.contentContainer = page.locator('#content, #main, body').first();
+    this.issuesTable = page.locator('[id$="issuesTable"]');
+  }
 
-          const idWoStr = String(idWo).trim();
-          console.log(`\n[${i + 1}/${wfmInputRecords.length}] 🔍 WO: ${idWoStr}`);
+  /**
+   * Navega para URL da Work Order
+   */
+  async navegarParaWO(url: string): Promise<void> {
+    await this.page.goto(url, { 
+      waitUntil: 'domcontentloaded',
+      timeout: 30000 
+    });
+    
+    // Aguarda conteúdo carregar (sem setTimeout)
+    await this.page.waitForLoadState('networkidle');
+  }
 
-          const dados: any = {
-            id_ordem: idWoStr,
-            cpf: 'N/A',
-            nome: '',
-            status: '',
-            data: '',
-            tipo: '',
-            escritorio: '',
-            area_telefonica: '',
-            protocolo: '',
-            segmento: '',
-            produto: '',
-            rede_acesso: '',
-            tecnologia_acesso: '',
-            cidade: '',
-            estado: '',
-            bairro: '',
-            endereco: '',
-            olt: '',
-            data_pendencia: '',
-            motivo_pendencia: '',
-            erro: ''
-          };
+  /**
+   * Verifica se sessão expirou
+   */
+  async verificarSessaoExpirada(): Promise<boolean> {
+    const url = this.page.url().toLowerCase();
+    return url.includes('login') || url.includes('autenticacao');
+  }
 
+  /**
+   * Extrai todos os dados da Work Order
+   */
+  async extrairDados(campos: Record<string, string | string[]>): Promise<Record<string, any>> {
+    return await this.page.evaluate((cps) => {
+      // 🔥 BLINDAGEM DE ESCOPO
+      const escopoCentral = document.querySelector('#content') || 
+                           document.querySelector('#main') || 
+                           document.body;
+
+      // Helper para buscar por múltiplos seletores ou label
+      const get = (sels: string | string[] | undefined, labelTxt?: string): string => {
+        if (!sels) return '';
+        
+        const seletores = Array.isArray(sels) ? sels : [sels];
+        
+        // 1. Tenta seletores CSS primeiro
+        for (const s of seletores) {
           try {
-            await test.step('Navegar para Work Order', async () => {
-              const url = `${wfmConfig.urlBase}${wfmConfig.urlCheck}?wo=${idWoStr}`;
-              console.log(`   🌐 Navegando: ${url}`);
-              await wfmPage.goto(url);
-            });
+            let el: Element | null = null;
+            
+            // BLINDAGEM JSF: IDs com dois-pontos
+            if (s.startsWith('#') && s.includes(':')) {
+              el = document.getElementById(s.substring(1));
+            } else {
+              el = escopoCentral.querySelector(s);
+            }
 
-            await test.step('Aguardar carregamento da página', async () => {
-              await wfmPage.waitForPageLoad();
-            });
-
-            await test.step('Verificar sessão', async () => {
-              const sessionExpired = await wfmPage.isSessionExpired();
-              if (sessionExpired) {
-                throw new Error('Sessão expirada. Faça login novamente.');
-              }
-            });
-
-            await test.step('Extrair dados da página', async () => {
-              const extraido = await wfmPage.extrairDados(wfmConfig.campos);
-              Object.assign(dados, extraido);
-              console.log(`   ✅ CPF: ${dados.cpf}`);
-              if (dados.nome) console.log(`   ✅ Nome: ${dados.nome}`);
-            });
-
-          } catch (err: any) {
-            console.error(`   ❌ ${err.message}`);
-            dados.erro = err.message;
+            if (el) {
+              const val = ['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName) 
+                ? (el as HTMLInputElement).value 
+                : el.textContent || '';
+              
+              const limpo = val.replace(/\s+/g, ' ').trim();
+              if (limpo) return limpo;
+            }
+          } catch (e) {
+            // Continua para próximo seletor
           }
+        }
+        
+        // 2. Fallback: busca pelo texto do label
+        if (labelTxt) {
+          const labels = Array.from(escopoCentral.querySelectorAll('label'));
+          const lbl = labels.find(l => 
+            l.textContent && l.textContent.trim().toLowerCase().includes(labelTxt.toLowerCase())
+          );
+          
+          if (lbl) {
+            // Cenário A: Input aninhado
+            const innerEl = lbl.querySelector('input, select, textarea') as HTMLInputElement;
+            if (innerEl?.value?.trim()) return innerEl.value.trim();
 
-          resultados.push(dados);
+            // Cenário B: Vinculado por ID
+            const idRef = lbl.htmlFor || lbl.getAttribute('for');
+            if (idRef) {
+              const ref = document.getElementById(idRef) as HTMLInputElement;
+              if (ref) {
+                const valRef = ['INPUT', 'SELECT', 'TEXTAREA'].includes(ref.tagName) 
+                  ? ref.value 
+                  : ref.textContent || '';
+                if (valRef?.trim()) return valRef.trim();
+              }
+            }
 
-          // ✅ Delay usando waitForLoadState ao invés de waitForTimeout
-          if (i < wfmInputRecords.length - 1) {
-            await wfmPage.page.waitForLoadState('networkidle');
+            // Cenário C: Próximo irmão
+            if (lbl.nextElementSibling) {
+              const nEl = lbl.nextElementSibling as HTMLInputElement;
+              const valIrmao = ['INPUT', 'SELECT', 'TEXTAREA'].includes(nEl.tagName) 
+                ? nEl.value 
+                : nEl.textContent || '';
+              if (valIrmao?.trim()) return valIrmao.trim();
+            }
+          }
+        }
+        
+        return '';
+      };
+
+      // Helper para extrair tabelas
+      const extrairTabelaFilhos = (
+        seletorClasse: string, 
+        indices: Record<string, number>
+      ): Record<string, string>[] => {
+        const lista: Record<string, string>[] = [];
+        const tabela = escopoCentral.querySelector(seletorClasse);
+        if (!tabela) return lista;
+        
+        tabela.querySelectorAll('tbody tr, .ui-datatable-data tr').forEach(tr => {
+          const tds = Array.from(tr.children);
+          if (tds.length >= Object.keys(indices).length && 
+              !tr.textContent?.toLowerCase().includes('nenhum registro')) {
+            const obj: Record<string, string> = {};
+            Object.entries(indices).forEach(([key, index]) => {
+              obj[key] = tds[index]?.textContent?.replace(/\s+/g, ' ').trim() || '';
+            });
+            lista.push(obj);
           }
         });
-      }
-    });
+        
+        return lista;
+      };
 
-    await test.step('Gerar CSV de saída', async () => {
-      await wfmCsvWriter.writeRecords(resultados);
-    });
-
-    await test.step('Validar resultados', async () => {
-      const sucesso = resultados.filter(r => 
-        !r.erro && 
-        r.cpf !== 'FALHA_VALIDACAO_WFM' && 
-        r.cpf !== 'N/A'
-      ).length;
-
-      console.log(`\n💾 CSV gerado com sucesso!`);
-      console.log(`   ✅ ${sucesso} registro(s) extraído(s)`);
-      console.log(`   ❌ ${resultados.length - sucesso} com erro`);
-
-      // ✅ Assertions com auto-retry do Playwright
-      expect(sucesso).toBeGreaterThan(0);
-      expect(resultados.length).toBe(wfmInputRecords.length);
-    });
-  });
-
-  test('deve validar CPF extraído com algoritmo Módulo 11', async ({ wfmPage, wfmConfig }) => {
-    await test.step('Navegar para WO de teste', async () => {
-      const url = `${wfmConfig.urlBase}${wfmConfig.urlCheck}?wo=TEST123`;
-      await wfmPage.goto(url);
-      await wfmPage.waitForPageLoad();
-    });
-
-    await test.step('Extrair e validar CPF', async () => {
-      const dados = await wfmPage.extrairDados(wfmConfig.campos);
+      // Extrai CPF com validação
+      let cpf = get(cps.cpf, 'cpf');
+      let cpfNumeros = cpf.replace(/\D/g, '');
       
-      // ✅ Assertions nativas do Playwright
-      await expect(dados.cpf).not.toBe('FALHA_VALIDACAO_WFM');
-      await expect(dados.cpf).toMatch(/^\d{11}$|^\d{3}\.\d{3}\.\d{3}-\d{2}$/);
-    });
-  });
-});
+      // Validação Módulo 11
+      const ehCpfValido = (num: string): boolean => {
+        if (num.length !== 11 || /^(\d)\1{10}$/.test(num)) return false;
+        let soma = 0, resto;
+        for (let i = 1; i <= 9; i++) soma += parseInt(num.substring(i - 1, i)) * (11 - i);
+        resto = (soma * 10) % 11;
+        if (resto === 10 || resto === 11) resto = 0;
+        if (resto !== parseInt(num.substring(9, 10))) return false;
+        soma = 0;
+        for (let i = 1; i <= 10; i++) soma += parseInt(num.substring(i - 1, i)) * (12 - i);
+        resto = (soma * 10) % 11;
+        if (resto === 10 || resto === 11) resto = 0;
+        return resto === parseInt(num.substring(10, 11));
+      };
+
+      if (!ehCpfValido(cpfNumeros)) {
+        const regexCPF = /(?:\d{3}\.\d{3}\.\d{3}-\d{2})|(?:\b\d{11}\b)/;
+        const match = escopoCentral.textContent?.match(regexCPF);
+        
+        if (match && match[0] && ehCpfValido(match[0].replace(/\D/g, ''))) {
+          cpf = match[0].replace(/\s+/g, ' ').trim();
+        } else {
+          cpf = 'FALHA_VALIDACAO_WFM';
+        }
+      } else {
+        cpf = cpf.replace(/\s+/g, ' ').trim();
+      }
+
+      // Extrai pendências
+      const listaPendencias = extrairTabelaFilhos('[id$="issuesTable"]', { data: 2, motivo: 3 });
+      const pendenciaMaisRecente = listaPendencias[0] || { data: '', motivo: '' };
+
+      // Retorna dados completos
+      return {
+        cpf: cpf,
+        nome: get(cps.nome, 'nome'),
+        status: get(cps.status, 'status'),
+        data: get(cps.data, 'data'),
+        tipo: get(cps.tipo, 'tipo'),
+        escritorio: get(cps.escritorio, 'escritorio'),
+        area_telefonica: get(cps.area_telefonica, 'area'),
+        protocolo: get(cps.protocolo, 'protocolo'),
+        segmento: get(cps.segmento, 'segmento'),
+        produto: get(cps.produto, 'produto'),
+        rede_acesso: get(cps.rede_acesso, 'rede de acesso'),
+        tecnologia_acesso: get(cps.tecnologia_acesso, 'tecnologia acesso'),
+        cidade: get(cps.cidade, 'cidade'),
+        estado: get(cps.estado, 'estado'),
+        bairro: get(cps.bairro, 'bairro'),
+        endereco: get(cps.endereco, 'endereco'),
+        olt: get(cps.olt, 'olt'),
+        data_pendencia: pendenciaMaisRecente.data,
+        motivo_pendencia: pendenciaMaisRecente.motivo,
+        produtos: extrairTabelaFilhos('.ui-datatable:not([id$="issuesTable"])', { id: 0, nome: 1, acao: 2 }),
+        atividades: extrairTabelaFilhos('.tabela-atividades', { 
+          id: 0, dataCriacao: 1, dataAgendamento: 2, periodo: 3, 
+          tecnico: 4, origem: 5, dataEncerramento: 6, status: 7 
+        }),
+        historico: extrairTabelaFilhos('.tabela-historico', { status: 0, dataCriacao: 1 })
+      };
+    }, campos);
+  }
+}
